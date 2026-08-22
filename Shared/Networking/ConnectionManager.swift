@@ -38,8 +38,16 @@ final class ConnectionManager: NSObject, ObservableObject {
         self.session = MCSession(peer: localPeer, securityIdentity: nil, encryptionPreference: .required)
         self.stateStore = stateStore
         #if os(iOS)
-        if let data = UserDefaults.standard.data(forKey: pairedDevicesKey),
-           var saved = try? JSONDecoder().decode([ManagedDevice].self, from: data) {
+        let localSaved = UserDefaults.standard.data(forKey: pairedDevicesKey)
+            .flatMap { try? JSONDecoder().decode([ManagedDevice].self, from: $0) } ?? []
+        let syncedSaved = SecureStore.get(pairedDevicesKey)
+            .flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONDecoder().decode([ManagedDevice].self, from: $0) } ?? []
+        var mergedByID: [UUID: ManagedDevice] = [:]
+        for device in syncedSaved { mergedByID[device.id] = device }
+        for device in localSaved { mergedByID[device.id] = device }
+        if !mergedByID.isEmpty {
+            var saved = Array(mergedByID.values)
             let revoked = Set((UserDefaults.standard.array(forKey: revokedDevicesKey) as? [String] ?? []).compactMap(UUID.init(uuidString:)))
             saved.removeAll { revoked.contains($0.id) }
             for index in saved.indices { saved[index].connectionStatus = .offline }
@@ -56,6 +64,9 @@ final class ConnectionManager: NSObject, ObservableObject {
         }
         super.init()
         session.delegate = self
+        #if os(iOS)
+        if !remoteDevices.isEmpty { persistPairedDevices() }
+        #endif
     }
 
     func start() {
@@ -194,7 +205,12 @@ final class ConnectionManager: NSObject, ObservableObject {
 
     private func persistPairedDevices() {
         #if os(iOS)
-        UserDefaults.standard.set(try? JSONEncoder().encode(remoteDevices), forKey: pairedDevicesKey)
+        if let data = try? JSONEncoder().encode(remoteDevices) {
+            UserDefaults.standard.set(data, forKey: pairedDevicesKey)
+            if let value = String(data: data, encoding: .utf8) {
+                SecureStore.set(value, for: pairedDevicesKey)
+            }
+        }
         #endif
     }
 
