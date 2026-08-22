@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>App</key>
+			<dict>
+				<key>Identifier</key>
+				<string>org.ciani01.cdctv</string>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Ciani Device Control App Lock</string>
+			<key>PayloadIdentifier</key>
+			<string>org.ciani01.cdc.payload.applock</string>
+			<key>PayloadType</key>
+			<string>com.apple.app.lock</string>
+			<key>PayloadUUID</key>
+			<string>BA71268F-E19B-4CA8-8D69-8FA7671CE2EA</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDisplayName</key>
+	<string>Ciani Device Control — Supervised TV</string>
+	<key>PayloadIdentifier</key>
+	<string>org.ciani01.cdc.profile.applock</string>
+	<key>PayloadOrganization</key>
+	<string>CDC</string>
+	<key>PayloadRemovalDisallowed</key>
+	<false/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>DF7EFEB4-B8A0-45F5-AB38-9B64D3775854</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>
