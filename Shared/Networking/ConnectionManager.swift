@@ -82,12 +82,18 @@ final class ConnectionManager: NSObject, ObservableObject {
         browser?.delegate = self
         browser?.startBrowsingForPeers()
         refreshSyncedPairings()
+        #if targetEnvironment(macCatalyst)
+        Task { await refreshConfiguratorDevices() }
+        #endif
         syncedPairingRefreshTask?.cancel()
         syncedPairingRefreshTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 guard !Task.isCancelled else { return }
                 self?.refreshSyncedPairings()
+                #if targetEnvironment(macCatalyst)
+                await self?.refreshConfiguratorDevices()
+                #endif
             }
         }
         #endif
@@ -157,6 +163,23 @@ final class ConnectionManager: NSObject, ObservableObject {
             if !session.connectedPeers.contains(peer) { connect(to: peer) }
         }
     }
+
+    #if targetEnvironment(macCatalyst)
+    private func refreshConfiguratorDevices() async {
+        let devices = await configuratorBridge.discoverDevices()
+        for item in devices where !remoteDevices.contains(where: { $0.name.localizedCaseInsensitiveCompare(item.name) == .orderedSame }) {
+            remoteDevices.append(ManagedDevice(
+                id: item.id,
+                name: item.name,
+                connectionStatus: .offline,
+                lockState: .unlocked,
+                customMessage: nil,
+                lastSeen: .now,
+                controllerID: nil
+            ))
+        }
+    }
+    #endif
     #endif
 
     #if os(iOS)
@@ -370,6 +393,11 @@ extension ConnectionManager: MCNearbyServiceBrowserDelegate {
             if let rawID = info?["id"], let id = UUID(uuidString: rawID) {
                 discoveredDeviceIDs[peerID] = id
                 peerByDeviceID[id] = peerID
+                if let name = info?["name"] {
+                    for device in remoteDevices where device.name.localizedCaseInsensitiveCompare(name) == .orderedSame {
+                        peerByDeviceID[device.id] = peerID
+                    }
+                }
                 #if os(iOS)
                 if let secret = SecureStore.get("peer-\(id.uuidString)") {
                     SecureStore.set(secret, for: "peer-\(id.uuidString)")

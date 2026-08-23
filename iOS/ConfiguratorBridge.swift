@@ -1,9 +1,15 @@
 #if targetEnvironment(macCatalyst)
 import Foundation
 import Darwin
+import CryptoKit
 
 @MainActor
 final class ConfiguratorBridge: ObservableObject {
+    struct ConfiguratorDevice: Sendable {
+        let id: UUID
+        let ecid: String
+        let name: String
+    }
     enum BridgeError: LocalizedError {
         case cfgutilMissing
         case profileMissing
@@ -37,6 +43,21 @@ final class ConfiguratorBridge: ObservableObject {
 
     func reportError(_ message: String) {
         lastError = message
+    }
+
+    func discoverDevices() async -> [ConfiguratorDevice] {
+        do {
+            let data = try await run(["--format", "JSON", "list"])
+            guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let output = root["Output"] as? [String: Any] else { return [] }
+            return output.compactMap { ecid, value in
+                guard let details = value as? [String: Any], let name = details["name"] as? String else { return nil }
+                return ConfiguratorDevice(id: Self.stableID(for: ecid), ecid: ecid, name: name)
+            }
+        } catch {
+            lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return []
+        }
     }
 
     func lock(_ device: ManagedDevice, until unlockAt: Date?) async -> Bool {
@@ -113,6 +134,15 @@ final class ConfiguratorBridge: ObservableObject {
         }
         guard let ecid = matches.first else { throw BridgeError.deviceNotFound(deviceName) }
         return ecid
+    }
+
+    private static func stableID(for value: String) -> UUID {
+        let digest = SHA256.hash(data: Data("configurator:\(value)".utf8))
+        var bytes = Array(digest.prefix(16))
+        bytes[6] = (bytes[6] & 0x0f) | 0x50
+        bytes[8] = (bytes[8] & 0x3f) | 0x80
+        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+                          bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
     }
 
     private func run(_ arguments: [String]) async throws -> Data {

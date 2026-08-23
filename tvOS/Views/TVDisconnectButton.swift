@@ -5,6 +5,8 @@ struct TVDisconnectButton: View {
     @State private var showingConfirmation = false
     @State private var pin = ""
     @State private var errorMessage: String?
+    private let keypad = [1, 2, 3, 4, 5, 6, 7, 8, 9, -2, 0, -1]
+    private let keypadColumns = Array(repeating: GridItem(.fixed(138), spacing: 18), count: 3)
 
     var body: some View {
         Button {
@@ -41,22 +43,30 @@ struct TVDisconnectButton: View {
                                 .frame(width: 20, height: 20)
                         }
                     }
-                    HStack(spacing: 12) {
-                        ForEach(0...9, id: \.self) { digit in
-                            Button("\(digit)") {
-                                guard pin.count < 4 else { return }
-                                pin.append(String(digit))
-                                errorMessage = nil
+                    LazyVGrid(columns: keypadColumns, spacing: 18) {
+                        ForEach(keypad, id: \.self) { key in
+                            if key == -2 {
+                                Color.clear.frame(width: 138, height: 68)
+                            } else if key == -1 {
+                                Button {
+                                    if !pin.isEmpty { pin.removeLast() }
+                                    errorMessage = nil
+                                } label: {
+                                    Image(systemName: "delete.left.fill")
+                                        .font(.system(size: 30, weight: .semibold))
+                                        .frame(width: 138, height: 68)
+                                }
+                                .disabled(pin.isEmpty)
+                            } else {
+                                Button("\(key)") {
+                                    guard pin.count < 4 else { return }
+                                    pin.append(String(key))
+                                    errorMessage = nil
+                                }
+                                .font(.system(size: 34, weight: .bold, design: .rounded))
+                                .frame(width: 138, height: 68)
                             }
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .frame(width: 64, height: 56)
                         }
-                        Button { if !pin.isEmpty { pin.removeLast() }; errorMessage = nil } label: {
-                            Image(systemName: "delete.left.fill")
-                                .font(.system(size: 25, weight: .semibold))
-                                .frame(width: 72, height: 56)
-                        }
-                        .disabled(pin.isEmpty)
                     }
                     if let errorMessage {
                         Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
@@ -77,7 +87,7 @@ struct TVDisconnectButton: View {
                 }
                 .padding(.horizontal, 110)
                 .padding(.vertical, 60)
-                .frame(width: 1640, height: 780)
+                .frame(width: 1640, height: 930)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 54, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 54, style: .continuous)
