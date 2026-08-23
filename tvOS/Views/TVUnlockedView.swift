@@ -8,17 +8,16 @@ struct TVUnlockedView: View {
     var body: some View {
         ZStack {
             AnimatedGradientBackground(preset: store.gradientPreset, vibrantOnBlack: true)
-            VStack(spacing: 24) {
-                Image(systemName: "appletv.fill").font(.system(size: 68)).frame(width: 150, height: 150)
+            VStack(spacing: 22) {
+                Image(systemName: "appletv.fill").font(.system(size: 64)).frame(width: 142, height: 142)
                     .background(.ultraThinMaterial, in: Circle())
-                Text(store.device.name).font(.system(size: 54, weight: .bold)).expandedFont()
-                VStack(spacing: 10) {
-                    Label("Available", systemImage: "checkmark.circle.fill")
-                    Text("Version \(AppVersion.display)")
-                }
-                .font(.title3).compressedFont().foregroundStyle(.white.opacity(0.78))
-                Text("Press Menu to exit.").font(.title2).compressedFont().foregroundStyle(.white.opacity(0.68))
-                TVDisconnectButton()
+                Label("Available", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 42, weight: .bold))
+                    .expandedFont()
+                Text("Ready for administrator commands")
+                    .font(.title2).compressedFont().foregroundStyle(.white.opacity(0.72))
+                Text("Press Menu to exit")
+                    .font(.title3).compressedFont().foregroundStyle(.white.opacity(0.58))
             }.padding(.horizontal, 90).padding(.vertical, 60)
                 .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 44))
                 .foregroundStyle(.white).opacity(appeared ? 1 : 0).scaleEffect(appeared || reduceMotion ? 1 : 0.94)

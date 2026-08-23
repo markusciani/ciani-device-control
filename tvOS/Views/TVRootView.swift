@@ -53,6 +53,13 @@ struct TVRootView: View {
                 .lineLimit(1)
                 .padding(.bottom, 16)
         }
+        .overlay(alignment: .bottomTrailing) {
+            if store.isPaired {
+                TVDisconnectButton()
+                    .padding(.trailing, 64)
+                    .padding(.bottom, 44)
+            }
+        }
     }
 }
 

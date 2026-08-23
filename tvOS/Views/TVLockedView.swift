@@ -9,11 +9,11 @@ struct TVLockedView: View {
     var body: some View {
         ZStack {
             AnimatedGradientBackground(preset: store.gradientPreset, vibrantOnBlack: true)
-            VStack(spacing: 22) {
-                Image(systemName: "lock.fill").font(.system(size: 72, weight: .semibold))
-                    .contentTransition(.symbolEffect(.replace)).frame(width: 152, height: 152)
+            VStack(spacing: 18) {
+                Image(systemName: "lock.fill").font(.system(size: 62, weight: .semibold))
+                    .contentTransition(.symbolEffect(.replace)).frame(width: 132, height: 132)
                     .background(.ultraThinMaterial, in: Circle())
-                Text("DEVICE LOCKED").font(.system(size: 62, weight: .bold)).expandedFont().tracking(1)
+                Text("DEVICE LOCKED").font(.system(size: 56, weight: .bold)).expandedFont().tracking(1)
                 if let message = store.device.customMessage {
                     Text(message).font(.system(size: 30, weight: .medium)).multilineTextAlignment(.center)
                         .foregroundStyle(.white.opacity(0.82)).lineLimit(3).minimumScaleFactor(0.75).padding(.top, 4)
@@ -22,7 +22,7 @@ struct TVLockedView: View {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         let remaining = CountdownLogic.remaining(until: unlockAt, now: context.date)
                         VStack(spacing: 0) {
-                            Text(remaining.formatted).font(.system(size: 118, weight: .bold, design: .rounded))
+                            Text(remaining.formatted).font(.system(size: 104, weight: .bold, design: .rounded))
                                 .expandedFont().monospacedDigit().contentTransition(.numericText())
                             Text("REMAINING").font(.headline.bold()).compressedFont().tracking(4).foregroundStyle(.white.opacity(0.72))
                         }.onChange(of: remaining.seconds) { _, seconds in if seconds == 0 { unlockWithTransition() } }
@@ -30,7 +30,6 @@ struct TVLockedView: View {
                 } else {
                     Text("Waiting for administrator approval.").font(.title2).padding(.top, 18)
                 }
-                TVDisconnectButton().padding(.top, 8)
             }.padding(.horizontal, 68).padding(.vertical, 42).foregroundStyle(.white)
                 .background {
                     RoundedRectangle(cornerRadius: 44, style: .continuous)
