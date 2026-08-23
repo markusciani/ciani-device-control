@@ -24,7 +24,7 @@ struct TVPairingView: View {
                 .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 44))
                 .foregroundStyle(.white).opacity(appeared ? 1 : 0).offset(y: appeared || reduceMotion ? 0 : 24)
         }
-        .overlay(alignment: .topLeading) { TVBrandHeader() }
+        .overlay(alignment: .top) { TVBrandHeader() }
         .onAppear {
             withAnimation(.easeOut(duration: 0.8)) { appeared = true }
             guard !reduceMotion else { return }

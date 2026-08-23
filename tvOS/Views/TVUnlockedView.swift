@@ -23,7 +23,7 @@ struct TVUnlockedView: View {
                 .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 44))
                 .foregroundStyle(.white).opacity(appeared ? 1 : 0).scaleEffect(appeared || reduceMotion ? 1 : 0.94)
         }
-        .overlay(alignment: .topLeading) { TVBrandHeader() }
+        .overlay(alignment: .top) { TVBrandHeader() }
         .onAppear {
             withAnimation(.easeOut(duration: 0.8)) { appeared = true }
         }

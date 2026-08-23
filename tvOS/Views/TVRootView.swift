@@ -3,13 +3,14 @@ import SwiftUI
 struct TVBrandHeader: View {
     @EnvironmentObject private var store: DeviceStateStore
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(store.device.name).font(.system(size: 28, weight: .semibold))
+        VStack(alignment: .center, spacing: 3) {
+            Text(store.device.name).font(.system(size: 28, weight: .semibold)).lineLimit(1)
             Text("Version \(AppVersion.display)").font(.system(size: 18, weight: .medium)).foregroundStyle(.white.opacity(0.68))
         }
+        .multilineTextAlignment(.center)
         .foregroundStyle(.white)
         .shadow(color: .black.opacity(0.7), radius: 8, y: 2)
-        .padding(.leading, 70).padding(.top, 52)
+        .padding(.top, 52)
     }
 }
 
@@ -73,7 +74,7 @@ private struct TVUnlockTransitionView: View {
             .scaleEffect(revealed || reduceMotion ? 1 : 0.82)
             .opacity(revealed ? 1 : 0).foregroundStyle(.white)
         }
-        .overlay(alignment: .topLeading) { TVBrandHeader() }
+        .overlay(alignment: .top) { TVBrandHeader() }
         .onAppear { withAnimation(.spring(response: 0.65, dampingFraction: 0.82)) { revealed = true } }
     }
 }

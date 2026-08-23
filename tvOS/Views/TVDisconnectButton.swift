@@ -30,7 +30,7 @@ struct TVDisconnectButton: View {
                         .font(.system(size: 28, weight: .medium))
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
-                        .frame(maxWidth: 880)
+                        .frame(maxWidth: 1200)
                         .fixedSize(horizontal: false, vertical: true)
                     SecureField("Administrator PIN", text: $pin)
                         .keyboardType(.numberPad)
@@ -55,9 +55,9 @@ struct TVDisconnectButton: View {
                         .disabled(pin.count != 4 || !pin.allSatisfy(\.isNumber))
                     }
                 }
-                .padding(.horizontal, 90)
+                .padding(.horizontal, 110)
                 .padding(.vertical, 60)
-                .frame(width: 1120, height: 680)
+                .frame(width: 1480, height: 720)
             }
         }
     }

@@ -39,7 +39,7 @@ struct TVLockedView: View {
                 .opacity(appeared ? 1 : 0)
                 .scaleEffect(appeared || reduceMotion ? 1 : 0.94)
         }
-        .overlay(alignment: .topLeading) { TVBrandHeader() }
+        .overlay(alignment: .top) { TVBrandHeader() }
         .onExitCommand { }
         .onAppear {
             withAnimation(.easeOut(duration: 0.8)) { appeared = true }
