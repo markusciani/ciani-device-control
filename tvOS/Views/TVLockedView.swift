@@ -30,6 +30,7 @@ struct TVLockedView: View {
                 } else {
                     Text("Waiting for administrator approval.").font(.title2).padding(.top, 18)
                 }
+                TVDisconnectButton().padding(.top, 8)
             }.padding(.horizontal, 68).padding(.vertical, 42).foregroundStyle(.white)
                 .background {
                     RoundedRectangle(cornerRadius: 44, style: .continuous)

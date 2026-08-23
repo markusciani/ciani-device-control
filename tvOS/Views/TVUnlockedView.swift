@@ -19,6 +19,7 @@ struct TVUnlockedView: View {
                 }
                 .font(.title3).compressedFont().foregroundStyle(.white.opacity(0.78))
                 Text("Press Menu to exit.").font(.title2).compressedFont().foregroundStyle(.white.opacity(0.68))
+                TVDisconnectButton()
             }.padding(.horizontal, 90).padding(.vertical, 60)
                 .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 44))
                 .foregroundStyle(.white).opacity(appeared ? 1 : 0).scaleEffect(appeared || reduceMotion ? 1 : 0.94)

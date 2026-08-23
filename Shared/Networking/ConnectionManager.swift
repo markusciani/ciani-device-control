@@ -102,6 +102,10 @@ final class ConnectionManager: NSObject, ObservableObject {
         #endif
         send(.unlock, toDeviceID: device.id)
     }
+
+    func updateRemovalPIN(_ pin: String) {
+        send(.setRemovalPINHash(PINVerifier.hash(pin)))
+    }
     #endif
 
     #if os(iOS)
@@ -115,8 +119,10 @@ final class ConnectionManager: NSObject, ObservableObject {
     func pair(with peer: MCPeerID, code: String) {
         let secret = UUID().uuidString + UUID().uuidString
         secretsByPeer[peer] = secret
+        let pin = SecureStore.get("master-pin") ?? "2010"
         send(.pair(PairingRequest(code: code, controllerID: controllerID,
-                                  controllerName: localPeer.displayName, sharedSecret: secret)), to: [peer])
+                                  controllerName: localPeer.displayName, sharedSecret: secret,
+                                  removalPINHash: PINVerifier.hash(pin))), to: [peer])
     }
 
     func send(_ command: DeviceCommand, to peer: MCPeerID? = nil) {
@@ -146,6 +152,27 @@ final class ConnectionManager: NSObject, ObservableObject {
             savePendingRemovalIDs(pending)
         }
     }
+
+    private func forgetRemoteDevice(id: UUID) {
+        remoteDevices.removeAll { $0.id == id }
+        peerByDeviceID[id] = nil
+        SecureStore.delete("peer-\(id.uuidString)")
+        persistPairedDevices()
+    }
+    #endif
+
+    #if os(tvOS)
+    @discardableResult
+    func disconnectFromController(pin: String) -> Bool {
+        guard let store = stateStore, store.verifyRemovalPIN(pin) else { return false }
+        send(.unpairConfirmed(store.device.id), to: session.connectedPeers)
+        store.unpair()
+        Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            session.disconnect()
+        }
+        return true
+    }
     #endif
 
     private func send(_ command: DeviceCommand, to peers: [MCPeerID]) {
@@ -156,10 +183,16 @@ final class ConnectionManager: NSObject, ObservableObject {
     private func receive(_ command: DeviceCommand, from peer: MCPeerID) {
         #if os(tvOS)
         guard let store = stateStore else { return }
+        if case .pair = command {
+            // Pairing is the only command accepted before authorization.
+        } else {
+            guard store.isPaired else { return }
+        }
         switch command {
         case .pair(let request):
             guard request.code == store.pairingCode else { send(.pairRejected, to: [peer]); return }
             store.pair(controllerID: request.controllerID, secret: request.sharedSecret)
+            if let hash = request.removalPINHash { store.setRemovalPINHash(hash) }
             send(.pairAccepted(store.statusPayload()), to: [peer])
         case .lock(let date, let message): store.lock(until: date, message: message); send(.statusResponse(store.statusPayload()), to: [peer])
         case .unlock: store.unlock(); send(.statusResponse(store.statusPayload()), to: [peer])
@@ -167,6 +200,7 @@ final class ConnectionManager: NSObject, ObservableObject {
         case .renameDevice(let name): store.rename(name); send(.statusResponse(store.statusPayload()), to: [peer])
         case .setGradient(let preset): store.gradientPreset = preset; send(.statusResponse(store.statusPayload()), to: [peer])
         case .unpair: store.unpair()
+        case .setRemovalPINHash(let hash): store.setRemovalPINHash(hash)
         default: break
         }
         #elseif os(iOS)
@@ -192,6 +226,7 @@ final class ConnectionManager: NSObject, ObservableObject {
             peerByDeviceID[payload.device.id] = peer
             upsert(payload.device)
         case .pairRejected: lastPairingError = "The pairing code was not accepted."
+        case .unpairConfirmed(let deviceID): forgetRemoteDevice(id: deviceID)
         default: break
         }
         #endif
@@ -249,6 +284,8 @@ extension ConnectionManager: MCSessionDelegate {
             stateStore?.updateConnection(state == .connected ? .connected : .offline)
             #elseif os(iOS)
             if state == .connected {
+                let pin = SecureStore.get("master-pin") ?? "2010"
+                send(.setRemovalPINHash(PINVerifier.hash(pin)), to: [peerID])
                 if let id = discoveredDeviceIDs[peerID], pendingRemovalIDs.contains(id) {
                     send(.unpair, to: [peerID]); finalizeRemoval(id: id)
                 } else { send(.requestStatus, to: [peerID]) }

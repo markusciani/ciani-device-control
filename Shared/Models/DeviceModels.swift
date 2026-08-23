@@ -58,6 +58,7 @@ struct PairingRequest: Codable {
     let controllerID: UUID
     let controllerName: String
     let sharedSecret: String
+    let removalPINHash: String?
 }
 
 struct DeviceStatusPayload: Codable {
@@ -76,4 +77,6 @@ enum DeviceCommand: Codable {
     case renameDevice(String)
     case setGradient(GradientPreset)
     case unpair
+    case setRemovalPINHash(String)
+    case unpairConfirmed(UUID)
 }

@@ -43,7 +43,10 @@ struct SettingsView: View {
         .onAppear { auth.refreshFaceIDAvailability() }
         .alert("Change Master PIN", isPresented: $showPINChange) {
             TextField("New four-digit PIN", text: $newPIN).keyboardType(.numberPad)
-            Button("Save") { _ = auth.changePIN(to: newPIN); newPIN = "" }
+            Button("Save") {
+                if auth.changePIN(to: newPIN) { connection.updateRemovalPIN(newPIN) }
+                newPIN = ""
+            }
             Button("Cancel", role: .cancel) { newPIN = "" }
         } message: { Text("Enter a new four-digit administrator PIN.") }
     }

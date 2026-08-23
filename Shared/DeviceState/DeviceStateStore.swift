@@ -12,6 +12,7 @@ final class DeviceStateStore: ObservableObject {
     private let deviceKey = "managed-device"
     private let presetKey = "gradient-preset"
     private let secretKey = "authorized-secret"
+    private let removalPINKey = "tv-removal-pin-hash"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -36,6 +37,15 @@ final class DeviceStateStore: ObservableObject {
         persist()
     }
 
+    func setRemovalPINHash(_ hash: String) {
+        SecureStore.set(hash, for: removalPINKey)
+    }
+
+    func verifyRemovalPIN(_ pin: String) -> Bool {
+        guard let expected = SecureStore.get(removalPINKey) else { return false }
+        return PINVerifier.hash(pin) == expected
+    }
+
     func unpair() {
         authorizedSecret = nil
         device.controllerID = nil
@@ -44,6 +54,7 @@ final class DeviceStateStore: ObservableObject {
         device.customMessage = nil
         pairingCode = Self.makePairingCode()
         defaults.removeObject(forKey: secretKey)
+        SecureStore.delete(removalPINKey)
         persist()
     }
 
