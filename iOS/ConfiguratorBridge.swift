@@ -14,6 +14,7 @@ final class ConfiguratorBridge: ObservableObject {
         case cfgutilMissing
         case profileMissing
         case deviceNotFound(String)
+        case ambiguousDevice(String)
         case invalidResponse
         case commandFailed(String)
 
@@ -25,6 +26,8 @@ final class ConfiguratorBridge: ObservableObject {
                 "The bundled Apple TV App Lock profile could not be found."
             case .deviceNotFound(let name):
                 "Apple Configurator cannot currently reach \(name). Keep the Mac and Apple TV on the same network and confirm that they are paired."
+            case .ambiguousDevice(let name):
+                "More than one Apple TV is named \(name). Rename one before using automatic unlock."
             case .invalidResponse:
                 "Apple Configurator returned an unreadable response."
             case .commandFailed(let detail):
@@ -38,6 +41,7 @@ final class ConfiguratorBridge: ObservableObject {
     @Published private(set) var systemLockedDeviceIDs: Set<UUID> = []
 
     private let cfgutilURL = URL(fileURLWithPath: "/usr/local/bin/cfgutil")
+    private let osascriptURL = URL(fileURLWithPath: "/usr/bin/osascript")
     private let profileIdentifier = "org.ciani01.cdc.profile.applock"
     private var scheduledUnlocks: [UUID: Task<Void, Never>] = [:]
 
@@ -83,19 +87,30 @@ final class ConfiguratorBridge: ObservableObject {
     }
 
     func unlock(_ device: ManagedDevice) async -> Bool {
+        await stopSingleAppMode(deviceNamed: device.name)
+    }
+
+    func stopSingleAppMode(deviceNamed deviceName: String) async -> Bool {
         isWorking = true
         lastError = nil
         defer { isWorking = false }
 
         do {
-            let ecid = try await resolveECID(for: device.name)
-            try await removeProfile(ecid: ecid)
-            scheduledUnlocks[device.id]?.cancel()
-            scheduledUnlocks[device.id] = nil
-            systemLockedDeviceIDs.remove(device.id)
+            // Resolve first so UI automation is never allowed to operate on an
+            // absent or ambiguously named device.
+            _ = try await resolveECID(for: deviceName)
+            _ = try await runExecutable(osascriptURL, arguments: ["-e", Self.stopSingleAppModeScript, deviceName])
             return true
         } catch {
-            lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            let detail = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            if detail.localizedCaseInsensitiveContains("not authorized") ||
+                detail.localizedCaseInsensitiveContains("accessibility") ||
+                detail.localizedCaseInsensitiveContains("-1743") ||
+                detail.localizedCaseInsensitiveContains("-25211") {
+                lastError = "Automatic unlock needs permission on this Mac. In System Settings > Privacy & Security, allow Ciani Device Control under Accessibility and Automation, then try again."
+            } else {
+                lastError = detail
+            }
             return false
         }
     }
@@ -132,7 +147,8 @@ final class ConfiguratorBridge: ObservableObject {
                   name.localizedCaseInsensitiveCompare(deviceName) == .orderedSame else { return nil }
             return ecid
         }
-        guard let ecid = matches.first else { throw BridgeError.deviceNotFound(deviceName) }
+        guard !matches.isEmpty else { throw BridgeError.deviceNotFound(deviceName) }
+        guard matches.count == 1, let ecid = matches.first else { throw BridgeError.ambiguousDevice(deviceName) }
         return ecid
     }
 
@@ -147,10 +163,17 @@ final class ConfiguratorBridge: ObservableObject {
 
     private func run(_ arguments: [String]) async throws -> Data {
         guard FileManager.default.isExecutableFile(atPath: cfgutilURL.path) else { throw BridgeError.cfgutilMissing }
-        return try await Task.detached { [cfgutilURL] in
+        return try await runExecutable(cfgutilURL, arguments: arguments)
+    }
+
+    private func runExecutable(_ executableURL: URL, arguments: [String]) async throws -> Data {
+        guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
+            throw BridgeError.commandFailed("Required macOS tool is unavailable: \(executableURL.path)")
+        }
+        return try await Task.detached {
             let token = UUID().uuidString
-            let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("cdc-cfgutil-\(token).out")
-            let errorURL = FileManager.default.temporaryDirectory.appendingPathComponent("cdc-cfgutil-\(token).err")
+            let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("cdc-command-\(token).out")
+            let errorURL = FileManager.default.temporaryDirectory.appendingPathComponent("cdc-command-\(token).err")
             defer {
                 try? FileManager.default.removeItem(at: outputURL)
                 try? FileManager.default.removeItem(at: errorURL)
@@ -162,12 +185,12 @@ final class ConfiguratorBridge: ObservableObject {
             posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, outputURL.path, O_WRONLY | O_CREAT | O_TRUNC, 0o600)
             posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, errorURL.path, O_WRONLY | O_CREAT | O_TRUNC, 0o600)
 
-            let strings = [cfgutilURL.path] + arguments
+            let strings = [executableURL.path] + arguments
             let storage = strings.map { strdup($0) }
             defer { storage.forEach { free($0) } }
             var argv = storage + [nil]
             var pid: pid_t = 0
-            let spawnResult = posix_spawn(&pid, cfgutilURL.path, &actions, nil, &argv, environ)
+            let spawnResult = posix_spawn(&pid, executableURL.path, &actions, nil, &argv, environ)
             guard spawnResult == 0 else {
                 throw BridgeError.commandFailed(String(cString: strerror(spawnResult)))
             }
@@ -185,5 +208,43 @@ final class ConfiguratorBridge: ObservableObject {
             return data
         }.value
     }
+
+    private static let stopSingleAppModeScript = #"""
+    on run argv
+        set targetName to item 1 of argv
+        tell application "Apple Configurator" to activate
+        delay 1
+
+        tell application "System Events"
+            tell process "Apple Configurator"
+                set frontmost to true
+                set matchingItems to {}
+                repeat with candidate in entire contents of front window
+                    try
+                        if (value of candidate as text) is targetName then set end of matchingItems to candidate
+                    end try
+                end repeat
+                if (count of matchingItems) is not 1 then error "Apple Configurator could not identify exactly one visible device named " & targetName
+
+                set targetItem to item 1 of matchingItems
+                try
+                    perform action "AXPress" of targetItem
+                on error
+                    click targetItem
+                end try
+                delay 0.5
+
+                click menu bar item "Actions" of menu bar 1
+                delay 0.2
+                click menu item "Advanced" of menu 1 of menu bar item "Actions" of menu bar 1
+                delay 0.2
+                set advancedMenu to menu 1 of menu item "Advanced" of menu 1 of menu bar item "Actions" of menu bar 1
+                set stopItems to menu items of advancedMenu whose name starts with "Stop Single App Mode"
+                if (count of stopItems) is not 1 then error "Stop Single App Mode is unavailable. Confirm the selected Apple TV is currently locked."
+                click item 1 of stopItems
+            end tell
+        end tell
+    end run
+    """#
 }
 #endif

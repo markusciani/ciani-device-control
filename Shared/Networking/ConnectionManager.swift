@@ -124,7 +124,7 @@ final class ConnectionManager: NSObject, ObservableObject {
     func unlockManagedDevice(_ device: ManagedDevice) async {
         #if targetEnvironment(macCatalyst)
         send(.unlock, toDeviceID: device.id)
-        guard await configuratorBridge.unlock(device) else { return }
+        guard await configuratorBridge.stopSingleAppMode(deviceNamed: device.name) else { return }
         #else
         send(.unlock, toDeviceID: device.id)
         #endif
@@ -236,6 +236,12 @@ final class ConnectionManager: NSObject, ObservableObject {
     #endif
 
     #if os(tvOS)
+    func requestSystemUnlock() {
+        guard let store = stateStore, store.isPaired else { return }
+        send(.systemUnlockRequested(deviceID: store.device.id, deviceName: store.device.name),
+             to: session.connectedPeers)
+    }
+
     @discardableResult
     func disconnectFromController(pin: String) -> Bool {
         guard let store = stateStore, store.verifyRemovalPIN(pin) else { return false }
@@ -269,7 +275,14 @@ final class ConnectionManager: NSObject, ObservableObject {
             if let hash = request.removalPINHash { store.setRemovalPINHash(hash) }
             send(.pairAccepted(store.statusPayload()), to: [peer])
         case .lock(let date, let message): store.lock(until: date, message: message); send(.statusResponse(store.statusPayload()), to: [peer])
-        case .unlock: store.unlock(); send(.statusResponse(store.statusPayload()), to: [peer])
+        case .unlock:
+            store.unlock()
+            send(.statusResponse(store.statusPayload()), to: [peer])
+            // An iPhone cannot remove system Single App Mode itself. Relay the
+            // request to any connected Mac controller, which can ask the paired
+            // Apple Configurator installation to stop it.
+            send(.systemUnlockRequested(deviceID: store.device.id, deviceName: store.device.name),
+                 to: session.connectedPeers.filter { $0 != peer })
         case .requestStatus: send(.statusResponse(store.statusPayload()), to: [peer])
         case .renameDevice(let name): store.rename(name); send(.statusResponse(store.statusPayload()), to: [peer])
         case .setGradient(let preset): store.gradientPreset = preset; send(.statusResponse(store.statusPayload()), to: [peer])
@@ -301,6 +314,10 @@ final class ConnectionManager: NSObject, ObservableObject {
             upsert(payload.device)
         case .pairRejected: lastPairingError = "The pairing code was not accepted."
         case .unpairConfirmed(let deviceID): forgetRemoteDevice(id: deviceID)
+        case .systemUnlockRequested(_, let deviceName):
+            #if targetEnvironment(macCatalyst)
+            Task { await configuratorBridge.stopSingleAppMode(deviceNamed: deviceName) }
+            #endif
         default: break
         }
         #endif

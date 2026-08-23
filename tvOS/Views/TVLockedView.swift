@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TVLockedView: View {
     @EnvironmentObject private var store: DeviceStateStore
+    @EnvironmentObject private var connection: ConnectionManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var recentlyUnlocked = false
     @State private var appeared = false
@@ -50,5 +51,6 @@ struct TVLockedView: View {
         recentlyUnlocked = true
         if reduceMotion { store.unlock() }
         else { withAnimation(.easeInOut(duration: 0.7)) { store.unlock() } }
+        connection.requestSystemUnlock()
     }
 }
