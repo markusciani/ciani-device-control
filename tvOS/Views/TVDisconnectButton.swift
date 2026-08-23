@@ -17,8 +17,9 @@ struct TVDisconnectButton: View {
         }
         .buttonStyle(.bordered)
         .tint(.white.opacity(0.8))
-        .sheet(isPresented: $showingConfirmation) {
-            NavigationStack {
+        .fullScreenCover(isPresented: $showingConfirmation) {
+            ZStack {
+                Color.black.opacity(0.9).ignoresSafeArea()
                 VStack(spacing: 30) {
                     Image(systemName: "lock.shield.fill").font(.system(size: 72))
                     Text("Disconnect This Apple TV?")
@@ -76,8 +77,14 @@ struct TVDisconnectButton: View {
                 }
                 .padding(.horizontal, 110)
                 .padding(.vertical, 60)
-                .frame(width: 1480, height: 760)
+                .frame(width: 1640, height: 780)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 54, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 54, style: .continuous)
+                        .stroke(.white.opacity(0.14), lineWidth: 2)
+                }
             }
+            .onExitCommand { showingConfirmation = false }
         }
     }
 }
