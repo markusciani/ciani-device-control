@@ -45,6 +45,13 @@ struct TVRootView: View {
                     .padding(.trailing, 64).padding(.top, 54)
             }
         }
+        .overlay(alignment: .bottom) {
+            Text("Device ID · \(store.device.id.uuidString)")
+                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.34))
+                .lineLimit(1)
+                .padding(.bottom, 16)
+        }
     }
 }
 

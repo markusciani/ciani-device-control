@@ -14,7 +14,6 @@ struct TVUnlockedView: View {
                 Text(store.device.name).font(.system(size: 54, weight: .bold)).expandedFont()
                 VStack(spacing: 10) {
                     Label("Available", systemImage: "checkmark.circle.fill")
-                    Text("Device ID  \(store.device.id.uuidString)")
                     Text("Version \(AppVersion.display)")
                 }
                 .font(.title3).compressedFont().foregroundStyle(.white.opacity(0.78))

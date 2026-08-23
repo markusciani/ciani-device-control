@@ -19,11 +19,19 @@ struct TVDisconnectButton: View {
         .tint(.white.opacity(0.8))
         .sheet(isPresented: $showingConfirmation) {
             NavigationStack {
-                VStack(spacing: 28) {
-                    Image(systemName: "lock.shield.fill").font(.system(size: 64))
-                    Text("Disconnect This Apple TV?").font(.title.bold()).expandedFont()
+                VStack(spacing: 30) {
+                    Image(systemName: "lock.shield.fill").font(.system(size: 72))
+                    Text("Disconnect This Apple TV?")
+                        .font(.system(size: 46, weight: .bold))
+                        .expandedFont()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     Text("Enter the four-digit administrator PIN. This Apple TV will leave every connected controller and return to its pairing screen.")
-                        .font(.title3).multilineTextAlignment(.center).foregroundStyle(.secondary).frame(maxWidth: 720)
+                        .font(.system(size: 28, weight: .medium))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: 880)
+                        .fixedSize(horizontal: false, vertical: true)
                     SecureField("Administrator PIN", text: $pin)
                         .keyboardType(.numberPad)
                         .textContentType(.oneTimeCode)
@@ -47,7 +55,9 @@ struct TVDisconnectButton: View {
                         .disabled(pin.count != 4 || !pin.allSatisfy(\.isNumber))
                     }
                 }
-                .padding(70)
+                .padding(.horizontal, 90)
+                .padding(.vertical, 60)
+                .frame(width: 1120, height: 680)
             }
         }
     }
