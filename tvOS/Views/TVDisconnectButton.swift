@@ -32,12 +32,31 @@ struct TVDisconnectButton: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: 1200)
                         .fixedSize(horizontal: false, vertical: true)
-                    SecureField("Administrator PIN", text: $pin)
-                        .keyboardType(.numberPad)
-                        .textContentType(.oneTimeCode)
-                        .font(.system(size: 34, weight: .semibold, design: .rounded))
-                        .multilineTextAlignment(.center)
-                        .frame(width: 360)
+                    HStack(spacing: 18) {
+                        ForEach(0..<4, id: \.self) { index in
+                            Circle()
+                                .fill(index < pin.count ? Color.primary : Color.clear)
+                                .stroke(.primary.opacity(0.7), lineWidth: 3)
+                                .frame(width: 20, height: 20)
+                        }
+                    }
+                    HStack(spacing: 12) {
+                        ForEach(0...9, id: \.self) { digit in
+                            Button("\(digit)") {
+                                guard pin.count < 4 else { return }
+                                pin.append(String(digit))
+                                errorMessage = nil
+                            }
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .frame(width: 64, height: 56)
+                        }
+                        Button { if !pin.isEmpty { pin.removeLast() }; errorMessage = nil } label: {
+                            Image(systemName: "delete.left.fill")
+                                .font(.system(size: 25, weight: .semibold))
+                                .frame(width: 72, height: 56)
+                        }
+                        .disabled(pin.isEmpty)
+                    }
                     if let errorMessage {
                         Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)
@@ -57,7 +76,7 @@ struct TVDisconnectButton: View {
                 }
                 .padding(.horizontal, 110)
                 .padding(.vertical, 60)
-                .frame(width: 1480, height: 720)
+                .frame(width: 1480, height: 760)
             }
         }
     }
