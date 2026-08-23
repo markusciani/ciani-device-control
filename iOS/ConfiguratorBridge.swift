@@ -35,6 +35,10 @@ final class ConfiguratorBridge: ObservableObject {
     private let profileIdentifier = "org.ciani01.cdc.profile.applock"
     private var scheduledUnlocks: [UUID: Task<Void, Never>] = [:]
 
+    func reportError(_ message: String) {
+        lastError = message
+    }
+
     func lock(_ device: ManagedDevice, until unlockAt: Date?) async -> Bool {
         isWorking = true
         lastError = nil

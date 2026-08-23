@@ -31,6 +31,7 @@ final class ConnectionManager: NSObject, ObservableObject {
     private let pairedDevicesKey = "paired-device-metadata"
     private let pendingRemovalKey = "pending-device-removals"
     private let revokedDevicesKey = "revoked-device-ids"
+    private var syncedPairingRefreshTask: Task<Void, Never>?
 
     init(stateStore: DeviceStateStore? = nil) {
         let name = UIDevice.current.name
@@ -80,31 +81,81 @@ final class ConnectionManager: NSObject, ObservableObject {
         browser = MCNearbyServiceBrowser(peer: localPeer, serviceType: Self.serviceType)
         browser?.delegate = self
         browser?.startBrowsingForPeers()
+        refreshSyncedPairings()
+        syncedPairingRefreshTask?.cancel()
+        syncedPairingRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
+                self?.refreshSyncedPairings()
+            }
+        }
         #endif
     }
 
-    func stop() { advertiser?.stopAdvertisingPeer(); browser?.stopBrowsingForPeers(); session.disconnect() }
+    func stop() {
+        syncedPairingRefreshTask?.cancel()
+        advertiser?.stopAdvertisingPeer()
+        browser?.stopBrowsingForPeers()
+        session.disconnect()
+    }
 
     #if os(iOS)
     func lockManagedDevice(_ device: ManagedDevice, until date: Date?, message: String?) async {
-        let delivered = send(.lock(unlockAt: date, message: message), toDeviceID: device.id)
-        guard delivered else { return }
         #if targetEnvironment(macCatalyst)
-        if !(await configuratorBridge.lock(device, until: date)) {
-            send(.unlock, toDeviceID: device.id)
+        guard await configuratorBridge.lock(device, until: date) else { return }
+        let connected = await waitForConnection(to: device.id, timeout: 15)
+        guard connected, send(.lock(unlockAt: date, message: message), toDeviceID: device.id) else {
+            _ = await configuratorBridge.unlock(device)
+            configuratorBridge.reportError("Single App Mode opened the TV app, but the Mac could not authenticate with it. The profile was removed for safety. Open the updated TV app once and confirm iCloud Keychain is enabled on the controllers.")
+            return
         }
+        #else
+        send(.lock(unlockAt: date, message: message), toDeviceID: device.id)
         #endif
     }
 
     func unlockManagedDevice(_ device: ManagedDevice) async {
         #if targetEnvironment(macCatalyst)
-        guard await configuratorBridge.unlock(device) else { return }
-        #endif
         send(.unlock, toDeviceID: device.id)
+        guard await configuratorBridge.unlock(device) else { return }
+        #else
+        send(.unlock, toDeviceID: device.id)
+        #endif
     }
 
     func updateRemovalPIN(_ pin: String) {
         send(.setRemovalPINHash(PINVerifier.hash(pin)))
+    }
+
+    private func waitForConnection(to deviceID: UUID, timeout: TimeInterval) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let peer = peerByDeviceID[deviceID], session.connectedPeers.contains(peer) { return true }
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        return false
+    }
+
+    private func refreshSyncedPairings() {
+        guard let value = SecureStore.get(pairedDevicesKey),
+              let data = value.data(using: .utf8),
+              let synced = try? JSONDecoder().decode([ManagedDevice].self, from: data) else { return }
+        let revoked = revokedDeviceIDs
+        for var device in synced where !revoked.contains(device.id) {
+            if let index = remoteDevices.firstIndex(where: { $0.id == device.id }) {
+                if remoteDevices[index].connectionStatus != .connected {
+                    device.connectionStatus = .offline
+                    remoteDevices[index] = device
+                }
+            } else {
+                device.connectionStatus = .offline
+                remoteDevices.append(device)
+            }
+        }
+        for (peer, id) in discoveredDeviceIDs where SecureStore.get("peer-\(id.uuidString)") != nil {
+            if !session.connectedPeers.contains(peer) { connect(to: peer) }
+        }
     }
     #endif
 
