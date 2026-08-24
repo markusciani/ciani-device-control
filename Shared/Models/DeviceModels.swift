@@ -50,6 +50,10 @@ enum GradientPreset: String, Codable, CaseIterable, Identifiable {
     case ocean = "Ocean"
     case purpleNight = "Purple Night"
     case dynamic = "Dynamic"
+    case sunset = "Sunset"
+    case emerald = "Emerald"
+    case rose = "Rose"
+    case electric = "Electric"
     var id: String { rawValue }
 }
 

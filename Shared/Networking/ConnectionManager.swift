@@ -134,6 +134,16 @@ final class ConnectionManager: NSObject, ObservableObject {
         send(.setRemovalPINHash(PINVerifier.hash(pin)))
     }
 
+    func refreshStatus(for deviceID: UUID? = nil) {
+        if let deviceID { send(.requestStatus, toDeviceID: deviceID) }
+        else { send(.requestStatus) }
+    }
+
+    func isConnected(to deviceID: UUID) -> Bool {
+        guard let peer = peerByDeviceID[deviceID] else { return false }
+        return session.connectedPeers.contains(peer)
+    }
+
     private func waitForConnection(to deviceID: UUID, timeout: TimeInterval) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

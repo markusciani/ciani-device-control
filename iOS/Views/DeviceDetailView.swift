@@ -8,6 +8,7 @@ struct DeviceDetailView: View {
     @State private var renamedDevice = ""
     @State private var message = ""
     @State private var operationError: String?
+    @State private var selectedPreset = GradientPreset.aurora
 
     private var current: ManagedDevice { connection.remoteDevices.first(where: { $0.id == device.id }) ?? device }
 
@@ -37,30 +38,88 @@ struct DeviceDetailView: View {
                         action("Lock Now", "lock.fill", .red) { lock(until: nil) }
                         action("Unlock Now", "lock.open.fill", .green) { unlock() }
                     }
+                    .disabled(current.connectionStatus != .connected)
                     Button { showTimer = true } label: {
                         Label(current.lockState.unlockAt == nil ? "Lock for a Duration" : "Change Timer", systemImage: "timer")
                             .frame(maxWidth: .infinity).padding().background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16)).foregroundStyle(.white)
                     }
+                    .disabled(current.connectionStatus != .connected)
+                    if current.connectionStatus != .connected {
+                        Label("Open Ciani Device Control on this Apple TV to use live controls.", systemImage: "wifi.slash")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
+
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("TV Appearance").font(.headline)
+                    Picker("Color Theme", selection: $selectedPreset) {
+                        ForEach(GradientPreset.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    Button {
+                        guard connection.send(.setGradient(selectedPreset), toDeviceID: current.id) else {
+                            operationError = "The Apple TV is offline. Open the TV app and try again."
+                            return
+                        }
+                    } label: {
+                        Label("Apply Theme to This TV", systemImage: "paintpalette.fill").frame(maxWidth: .infinity)
+                    }.buttonStyle(.borderedProminent).disabled(current.connectionStatus != .connected)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).padding(20)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Device Information").font(.headline)
+                    LabeledContent("Last Seen", value: current.lastSeen.formatted(date: .abbreviated, time: .shortened))
+                    LabeledContent("Connection", value: current.connectionStatus.label)
+                    ShareLink(item: current.id.uuidString) {
+                        LabeledContent("Device ID") {
+                            Label("Share", systemImage: "square.and.arrow.up").font(.subheadline)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).padding(20)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
             }.padding()
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Device")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Rename") { renamedDevice = current.name; showRename = true } } }
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { connection.refreshStatus(for: current.id) } label: { Image(systemName: "arrow.clockwise") }
+                    .disabled(current.connectionStatus != .connected)
+                Button("Rename") { renamedDevice = current.name; showRename = true }
+                    .disabled(current.connectionStatus != .connected)
+            }
+        }
         .sheet(isPresented: $showTimer) { LockTimerView(message: message) { date in lock(until: date) } }
-        .alert("Single App Mode Failed", isPresented: Binding(
+        .alert("Command Could Not Be Completed", isPresented: Binding(
             get: { operationError != nil },
             set: { if !$0 { operationError = nil } }
         )) { Button("OK") { operationError = nil } } message: { Text(operationError ?? "Unknown error") }
         .alert("Rename Device", isPresented: $showRename) {
             TextField("Device name", text: $renamedDevice)
-            Button("Save") { connection.send(.renameDevice(renamedDevice), toDeviceID: current.id) }
+            Button("Save") {
+                let cleanName = renamedDevice.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !cleanName.isEmpty, connection.send(.renameDevice(cleanName), toDeviceID: current.id) else {
+                    operationError = "The name could not be changed because the Apple TV is offline."
+                    return
+                }
+            }
             Button("Cancel", role: .cancel) {}
+        }
+        .onAppear {
+            message = current.customMessage ?? ""
+            connection.refreshStatus(for: current.id)
         }
     }
 
     private func lock(until date: Date?) {
+        guard current.connectionStatus == .connected else {
+            operationError = "The Apple TV is offline. Open Ciani Device Control on the TV and try again."
+            return
+        }
         Task {
             await connection.lockManagedDevice(current, until: date, message: message)
             #if targetEnvironment(macCatalyst)
@@ -70,6 +129,10 @@ struct DeviceDetailView: View {
     }
 
     private func unlock() {
+        guard current.connectionStatus == .connected else {
+            operationError = "The Apple TV is offline. Open Ciani Device Control on the TV and try again."
+            return
+        }
         Task {
             await connection.unlockManagedDevice(current)
             #if targetEnvironment(macCatalyst)

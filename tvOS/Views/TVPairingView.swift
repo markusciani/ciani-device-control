@@ -9,19 +9,24 @@ struct TVPairingView: View {
     var body: some View {
         ZStack {
             AnimatedGradientBackground(preset: store.gradientPreset, vibrantOnBlack: true)
-            VStack(spacing: 24) {
-                Image(systemName: "lock.shield.fill").font(.system(size: 72)).frame(width: 150, height: 150)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 42))
-                Text("Set Up This Apple TV").font(.title2.weight(.semibold)).expandedFont()
-                Text("Pair with a Ciani Device Control administrator.").foregroundStyle(.white.opacity(0.76))
-                VStack(spacing: 10) {
-                    Text("PAIRING CODE").font(.headline).compressedFont().tracking(3).foregroundStyle(.white.opacity(0.72))
-                    Text(store.pairingCode).font(.system(size: 68, weight: .bold, design: .rounded)).expandedFont().monospacedDigit().tracking(8)
-                }.padding(.horizontal, 60).padding(.vertical, 28).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30))
-                Label("Waiting for controller…", systemImage: "antenna.radiowaves.left.and.right")
-                    .compressedFont().foregroundStyle(.white.opacity(0.7)).symbolEffect(.variableColor.iterative, options: .repeating, value: scanning)
-            }.padding(.horizontal, 80).padding(.vertical, 48)
-                .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 44))
+            HStack(spacing: 72) {
+                VStack(alignment: .leading, spacing: 20) {
+                    Image(systemName: "lock.shield.fill").font(.system(size: 68))
+                    Text("Pair this Apple TV").font(.system(size: 48, weight: .semibold))
+                    Text("On the administrator app, choose Add Device and enter this code.")
+                        .font(.title3).foregroundStyle(.white.opacity(0.66)).frame(maxWidth: 520, alignment: .leading)
+                    Label("Waiting for a controller", systemImage: "antenna.radiowaves.left.and.right")
+                        .foregroundStyle(.white.opacity(0.72)).symbolEffect(.variableColor.iterative, options: .repeating, value: scanning)
+                }
+                VStack(spacing: 12) {
+                    Text("PAIRING CODE").font(.headline).tracking(3).foregroundStyle(.white.opacity(0.58))
+                    Text(store.pairingCode)
+                        .font(.system(size: 82, weight: .bold, design: .rounded))
+                        .monospacedDigit().tracking(10)
+                }
+                .padding(.horizontal, 58).padding(.vertical, 46)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 34, style: .continuous))
+            }.padding(.horizontal, 92).padding(.vertical, 58)
                 .foregroundStyle(.white).opacity(appeared ? 1 : 0).offset(y: appeared || reduceMotion ? 0 : 24)
         }
         .overlay(alignment: .top) { TVBrandHeader() }

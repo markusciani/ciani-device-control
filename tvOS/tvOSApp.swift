@@ -22,7 +22,14 @@ struct CianiDeviceControlTVApp: App {
                 .onAppear { connection.start() }
                 .task { await updates.check() }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { Task { await updates.check() } }
+                    if phase == .active {
+                        connection.start()
+                        Task { await updates.check() }
+                    } else {
+                        // The pairing secret and lock state remain persisted.
+                        // Only the suspended network session is restarted.
+                        connection.stop()
+                    }
                 }
         }
     }

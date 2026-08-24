@@ -3,17 +3,30 @@ import SwiftUI
 struct DeviceListView: View {
     @ObservedObject var connection: ConnectionManager
     @State private var showPairing = false
+    @State private var searchText = ""
+    @AppStorage("match-controller-theme") private var matchControllerTheme = false
+    @AppStorage("gradient-preset") private var presetRaw = GradientPreset.aurora.rawValue
+
+    private var filteredDevices: [ManagedDevice] {
+        guard !searchText.isEmpty else { return connection.remoteDevices }
+        return connection.remoteDevices.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
 
     var body: some View {
         ZStack {
-            Color(.systemGroupedBackground).ignoresSafeArea()
+            if matchControllerTheme {
+                AnimatedGradientBackground(preset: GradientPreset(rawValue: presetRaw) ?? .aurora)
+            } else {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+            }
             if connection.remoteDevices.isEmpty {
                 ContentUnavailableView("No Paired Devices", systemImage: "appletv",
                     description: Text("Set up Ciani Device Control on an Apple TV, then pair it here."))
             } else {
                 ScrollView {
                     LazyVStack(spacing: 14) {
-                        ForEach(connection.remoteDevices) { device in
+                        DeviceSummaryStrip(devices: connection.remoteDevices)
+                        ForEach(filteredDevices) { device in
                             NavigationLink(value: device) { DeviceCard(device: device) }.buttonStyle(.plain)
                         }
                     }.padding()
@@ -21,16 +34,43 @@ struct DeviceListView: View {
             }
         }
         .navigationTitle("Devices")
+        .searchable(text: $searchText, prompt: "Search devices")
+        .refreshable { connection.refreshStatus() }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Ciani Device Control").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) { Button { showPairing = true } label: { Image(systemName: "plus") } }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { connection.refreshStatus() } label: { Image(systemName: "arrow.clockwise") }
+                    .accessibilityLabel("Refresh device status")
+                Button { showPairing = true } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Pair Apple TV")
+            }
         }
         .navigationDestination(for: ManagedDevice.self) { DeviceDetailView(device: $0, connection: connection) }
         .sheet(isPresented: $showPairing) { PairingView(connection: connection) }
+    }
+}
+
+private struct DeviceSummaryStrip: View {
+    let devices: [ManagedDevice]
+    var body: some View {
+        HStack(spacing: 10) {
+            summary("Online", devices.filter { $0.connectionStatus == .connected }.count, "wifi", .green)
+            summary("Locked", devices.filter { $0.lockState.isLocked }.count, "lock.fill", .orange)
+            summary("Offline", devices.filter { $0.connectionStatus != .connected }.count, "wifi.slash", .secondary)
+        }
+    }
+
+    private func summary(_ title: String, _ value: Int, _ symbol: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("\(value)", systemImage: symbol).font(.headline).foregroundStyle(color)
+            Text(title).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
     }
 }
 

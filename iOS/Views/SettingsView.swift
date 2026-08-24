@@ -6,8 +6,10 @@ struct SettingsView: View {
     @AppStorage("animated-background") private var animatedBackground = true
     @AppStorage("controller-auto-lock") private var autoLock = true
     @AppStorage("gradient-preset") private var presetRaw = GradientPreset.aurora.rawValue
+    @AppStorage("match-controller-theme") private var matchControllerTheme = false
     @State private var newPIN = ""
     @State private var showPINChange = false
+    @State private var pinError: String?
 
     var body: some View {
         List {
@@ -28,6 +30,7 @@ struct SettingsView: View {
                     ForEach(GradientPreset.allCases) { Text($0.rawValue).tag($0.rawValue) }
                 }.onChange(of: presetRaw) { _, value in if let preset = GradientPreset(rawValue: value) { connection.send(.setGradient(preset)) } }
                 Toggle("Animated Background", isOn: $animatedBackground)
+                Toggle("Match Controller to TV Colors", isOn: $matchControllerTheme)
                 NavigationLink("Lock Screen Preview") { LockScreenPreview(preset: GradientPreset(rawValue: presetRaw) ?? .aurora) }
             }
             Section("Devices") {
@@ -44,11 +47,18 @@ struct SettingsView: View {
         .alert("Change Master PIN", isPresented: $showPINChange) {
             TextField("New four-digit PIN", text: $newPIN).keyboardType(.numberPad)
             Button("Save") {
-                if auth.changePIN(to: newPIN) { connection.updateRemovalPIN(newPIN) }
-                newPIN = ""
+                if auth.changePIN(to: newPIN) {
+                    connection.updateRemovalPIN(newPIN)
+                    newPIN = ""
+                } else {
+                    pinError = "The administrator PIN must contain exactly four numbers."
+                }
             }
             Button("Cancel", role: .cancel) { newPIN = "" }
         } message: { Text("Enter a new four-digit administrator PIN.") }
+        .alert("PIN Was Not Changed", isPresented: Binding(
+            get: { pinError != nil }, set: { if !$0 { pinError = nil } }
+        )) { Button("OK") { pinError = nil } } message: { Text(pinError ?? "") }
     }
 }
 
