@@ -242,7 +242,7 @@ final class ConfiguratorBridge: ObservableObject {
         set targetAppName to __APP_NAME__
         set targetBundleID to __BUNDLE_ID__
         tell application "Apple Configurator" to activate
-        delay 1
+        delay 2
 
         tell application "System Events"
             tell process "Apple Configurator"
@@ -251,46 +251,57 @@ final class ConfiguratorBridge: ObservableObject {
                 -- toolbar field is not exposed through Accessibility. Filtering
                 -- by ECID leaves exactly the cfgutil-verified target visible.
                 keystroke "f" using command down
-                delay 0.3
+                delay 0.8
                 keystroke "a" using command down
                 keystroke targetECID
-                delay 0.7
+                delay 2
                 key code 48
-                delay 0.2
+                delay 0.8
                 keystroke "a" using command down
-                delay 0.5
+                delay 1.5
 
                 click menu bar item "Actions" of menu bar 1
-                delay 0.2
+                delay 0.8
                 click menu item "Advanced" of menu 1 of menu bar item "Actions" of menu bar 1
-                delay 0.2
+                delay 0.8
                 set advancedMenu to menu 1 of menu item "Advanced" of menu 1 of menu bar item "Actions" of menu bar 1
                 set startItems to menu items of advancedMenu whose name starts with "Start Single App Mode"
                 if (count of startItems) is not 1 then error "Start Single App Mode is unavailable. Confirm this Apple TV is supervised and connected to Apple Configurator."
                 click item 1 of startItems
-                delay 1
+                delay 2
 
                 set chooser to front window
-                try
-                    if (count of sheets of front window) > 0 then set chooser to sheet 1 of front window
-                end try
+                repeat with attempt from 1 to 20
+                    try
+                        if (count of sheets of front window) > 0 then
+                            set chooser to sheet 1 of front window
+                            exit repeat
+                        end if
+                    end try
+                    delay 0.5
+                end repeat
 
                 -- Filter the installed-app list when Configurator exposes a search field.
                 try
                     set value of text field 1 of chooser to targetAppName
-                    delay 0.5
+                    delay 1.5
                 end try
 
                 set appItems to {}
-                repeat with candidate in entire contents of chooser
-                    try
-                        set candidateValue to value of candidate as text
-                        if candidateValue is targetAppName or candidateValue is targetBundleID then set end of appItems to candidate
-                    end try
-                    try
-                        set candidateTitle to title of candidate as text
-                        if candidateTitle is targetAppName or candidateTitle is targetBundleID then set end of appItems to candidate
-                    end try
+                repeat with attempt from 1 to 20
+                    set appItems to {}
+                    repeat with candidate in entire contents of chooser
+                        try
+                            set candidateValue to value of candidate as text
+                            if candidateValue is targetAppName or candidateValue is targetBundleID then set end of appItems to candidate
+                        end try
+                        try
+                            set candidateTitle to title of candidate as text
+                            if candidateTitle is targetAppName or candidateTitle is targetBundleID then set end of appItems to candidate
+                        end try
+                    end repeat
+                    if (count of appItems) > 0 then exit repeat
+                    delay 0.5
                 end repeat
                 if (count of appItems) is 0 then error "Ciani Device Control is not installed on this Apple TV. Install it, reopen Configurator, and try again."
 
@@ -300,12 +311,16 @@ final class ConfiguratorBridge: ObservableObject {
                 on error
                     click appItem
                 end try
-                delay 0.3
+                delay 1
 
                 set selectButtons to buttons of chooser whose name is "Select App"
                 if (count of selectButtons) is 0 then set selectButtons to buttons of chooser whose name is "Select"
                 if (count of selectButtons) is 0 then error "Configurator opened the app chooser, but the Select App button could not be found."
                 click item 1 of selectButtons
+                -- Configurator applies Single App Mode asynchronously. Waiting
+                -- here prevents the controller from racing ahead while the TV
+                -- is still switching applications.
+                delay 4
             end tell
         end tell
     """#
@@ -314,29 +329,30 @@ final class ConfiguratorBridge: ObservableObject {
         set targetName to __DEVICE_NAME__
         set targetECID to __DEVICE_ECID__
         tell application "Apple Configurator" to activate
-        delay 1
+        delay 2
 
         tell application "System Events"
             tell process "Apple Configurator"
                 set frontmost to true
                 keystroke "f" using command down
-                delay 0.3
+                delay 0.8
                 keystroke "a" using command down
                 keystroke targetECID
-                delay 0.7
+                delay 2
                 key code 48
-                delay 0.2
+                delay 0.8
                 keystroke "a" using command down
-                delay 0.5
+                delay 1.5
 
                 click menu bar item "Actions" of menu bar 1
-                delay 0.2
+                delay 0.8
                 click menu item "Advanced" of menu 1 of menu bar item "Actions" of menu bar 1
-                delay 0.2
+                delay 0.8
                 set advancedMenu to menu 1 of menu item "Advanced" of menu 1 of menu bar item "Actions" of menu bar 1
                 set stopItems to menu items of advancedMenu whose name starts with "Stop Single App Mode"
                 if (count of stopItems) is not 1 then error "Stop Single App Mode is unavailable. Confirm the selected Apple TV is currently locked."
                 click item 1 of stopItems
+                delay 3
             end tell
         end tell
     """#
