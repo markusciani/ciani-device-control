@@ -33,7 +33,7 @@ struct TVLockedView: View {
                 }
             }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .padding(.leading, 96).padding(.top, 124).padding(.trailing, 520)
+                .padding(.leading, 64).padding(.top, 124).padding(.trailing, 520)
                 .foregroundStyle(.white)
                 .opacity(appeared ? 1 : 0)
                 .offset(x: appeared || reduceMotion ? 0 : -36)

@@ -352,7 +352,14 @@ final class ConnectionManager: NSObject, ObservableObject {
             store.pair(controllerID: request.controllerID, secret: request.sharedSecret)
             if let hash = request.removalPINHash { store.setRemovalPINHash(hash) }
             send(.pairAccepted(store.statusPayload()), to: [peer])
-        case .lock(let date, let message): store.lock(until: date, message: message); send(.statusResponse(store.statusPayload()), to: [peer])
+        case .lock(let date, let message):
+            store.lock(until: date, message: message)
+            send(.statusResponse(store.statusPayload()), to: [peer])
+            // The iPhone cannot control Configurator itself. Ask any connected
+            // Mac controller to apply system-level Single App Mode.
+            send(.systemLockRequested(deviceID: store.device.id, deviceName: store.device.name,
+                                      unlockAt: date, message: message),
+                 to: session.connectedPeers.filter { $0 != peer })
         case .unlock:
             store.unlock()
             send(.statusResponse(store.statusPayload()), to: [peer])
@@ -397,6 +404,15 @@ final class ConnectionManager: NSObject, ObservableObject {
         case .systemUnlockRequested(_, let deviceName):
             #if targetEnvironment(macCatalyst)
             Task { await configuratorBridge.stopSingleAppMode(deviceNamed: deviceName) }
+            #endif
+        case .systemLockRequested(let deviceID, let deviceName, let unlockAt, _):
+            #if targetEnvironment(macCatalyst)
+            let target = remoteDevices.first(where: { $0.id == deviceID }) ?? ManagedDevice(
+                id: deviceID, name: deviceName, connectionStatus: .connected,
+                lockState: unlockAt.map(LockState.lockedUntil) ?? .lockedIndefinitely,
+                customMessage: nil, lastSeen: .now, controllerID: nil
+            )
+            Task { _ = await configuratorBridge.lock(target, until: unlockAt) }
             #endif
         default: break
         }

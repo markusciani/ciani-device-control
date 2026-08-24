@@ -76,6 +76,7 @@ enum DeviceCommand: Codable {
     case pairRejected
     case lock(unlockAt: Date?, message: String?)
     case unlock
+    case systemLockRequested(deviceID: UUID, deviceName: String, unlockAt: Date?, message: String?)
     case systemUnlockRequested(deviceID: UUID, deviceName: String)
     case requestStatus
     case statusResponse(DeviceStatusPayload)

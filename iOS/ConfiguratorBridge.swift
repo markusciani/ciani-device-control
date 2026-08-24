@@ -247,32 +247,17 @@ final class ConfiguratorBridge: ObservableObject {
         tell application "System Events"
             tell process "Apple Configurator"
                 set frontmost to true
-                set deviceSearch to missing value
-                repeat with candidate in text fields of front window
-                    try
-                        set candidateDescription to description of candidate as text
-                        if candidateDescription contains "earch" then set deviceSearch to candidate
-                    end try
-                end repeat
-                if deviceSearch is missing value then error "Configurator's device search field could not be found."
-                set value of deviceSearch to targetECID
+                -- Command-F focuses Configurator's device filter even when its
+                -- toolbar field is not exposed through Accessibility. Filtering
+                -- by ECID leaves exactly the cfgutil-verified target visible.
+                keystroke "f" using command down
+                delay 0.3
+                keystroke "a" using command down
+                keystroke targetECID
                 delay 0.7
-
-                set matchingItems to {}
-                repeat with candidate in entire contents of front window
-                    try
-                        set candidateValue to value of candidate as text
-                        if candidateValue contains targetName or candidateValue contains targetECID then set end of matchingItems to candidate
-                    end try
-                end repeat
-                if (count of matchingItems) is 0 then error "Apple Configurator could not find the connected device after filtering by its ECID. Clear Configurator's search, confirm the TV is visible, and try again."
-
-                set targetItem to item 1 of matchingItems
-                try
-                    perform action "AXPress" of targetItem
-                on error
-                    click targetItem
-                end try
+                key code 48
+                delay 0.2
+                keystroke "a" using command down
                 delay 0.5
 
                 click menu bar item "Actions" of menu bar 1
@@ -334,32 +319,14 @@ final class ConfiguratorBridge: ObservableObject {
         tell application "System Events"
             tell process "Apple Configurator"
                 set frontmost to true
-                set deviceSearch to missing value
-                repeat with candidate in text fields of front window
-                    try
-                        set candidateDescription to description of candidate as text
-                        if candidateDescription contains "earch" then set deviceSearch to candidate
-                    end try
-                end repeat
-                if deviceSearch is missing value then error "Configurator's device search field could not be found."
-                set value of deviceSearch to targetECID
+                keystroke "f" using command down
+                delay 0.3
+                keystroke "a" using command down
+                keystroke targetECID
                 delay 0.7
-
-                set matchingItems to {}
-                repeat with candidate in entire contents of front window
-                    try
-                        set candidateValue to value of candidate as text
-                        if candidateValue contains targetName or candidateValue contains targetECID then set end of matchingItems to candidate
-                    end try
-                end repeat
-                if (count of matchingItems) is 0 then error "Apple Configurator could not find the connected device after filtering by its ECID. Clear Configurator's search, confirm the TV is visible, and try again."
-
-                set targetItem to item 1 of matchingItems
-                try
-                    perform action "AXPress" of targetItem
-                on error
-                    click targetItem
-                end try
+                key code 48
+                delay 0.2
+                keystroke "a" using command down
                 delay 0.5
 
                 click menu bar item "Actions" of menu bar 1
