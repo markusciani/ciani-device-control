@@ -14,10 +14,12 @@ struct TVDisconnectButton: View {
             errorMessage = nil
             showingConfirmation = true
         } label: {
-            Label("Disconnect Controller", systemImage: "iphone.slash")
-                .font(.headline)
+            Image(systemName: "iphone.slash")
+                .font(.system(size: 25, weight: .semibold))
+                .frame(width: 52, height: 52)
+                .accessibilityLabel("Disconnect Controller")
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.borderedProminent)
         .tint(.white.opacity(0.8))
         .fullScreenCover(isPresented: $showingConfirmation) {
             ZStack {

@@ -3,14 +3,15 @@ import SwiftUI
 struct TVBrandHeader: View {
     @EnvironmentObject private var store: DeviceStateStore
     var body: some View {
-        VStack(alignment: .center, spacing: 3) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(store.device.name).font(.system(size: 28, weight: .semibold)).lineLimit(1)
             Text("Version \(AppVersion.display)").font(.system(size: 18, weight: .medium)).foregroundStyle(.white.opacity(0.68))
         }
-        .multilineTextAlignment(.center)
+        .multilineTextAlignment(.leading)
         .foregroundStyle(.white)
         .shadow(color: .black.opacity(0.7), radius: 8, y: 2)
-        .padding(.top, 52)
+        .padding(.leading, 64)
+        .padding(.top, 48)
     }
 }
 
@@ -43,7 +44,7 @@ struct TVRootView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 22).padding(.vertical, 13)
                     .background(.black.opacity(0.72), in: Capsule())
-                    .padding(.trailing, 64).padding(.top, 54)
+                    .padding(.trailing, 64).padding(.top, 124)
             }
         }
         .overlay(alignment: .bottom) {
@@ -53,11 +54,11 @@ struct TVRootView: View {
                 .lineLimit(1)
                 .padding(.bottom, 16)
         }
-        .overlay(alignment: .bottomTrailing) {
+        .overlay(alignment: .topTrailing) {
             if store.isPaired {
                 TVDisconnectButton()
                     .padding(.trailing, 64)
-                    .padding(.bottom, 44)
+                    .padding(.top, 44)
             }
         }
     }

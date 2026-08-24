@@ -22,6 +22,8 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Ciani Device Control discovers and manages paired Apple TVs on your local network.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Ciani Device Control uses Apple Configurator to start and stop Single App Mode on supervised Apple TVs.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Use Face ID to securely unlock the Ciani Device Control administrator console.</string>
 	<key>UILaunchScreen</key>

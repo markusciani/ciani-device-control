@@ -38,7 +38,6 @@ final class ConfiguratorBridge: ObservableObject {
     @Published private(set) var systemLockedDeviceIDs: Set<UUID> = []
 
     private let cfgutilURL = URL(fileURLWithPath: "/usr/local/bin/cfgutil")
-    private let osascriptURL = URL(fileURLWithPath: "/usr/bin/osascript")
     private var scheduledUnlocks: [UUID: Task<Void, Never>] = [:]
 
     func reportError(_ message: String) {
@@ -55,7 +54,7 @@ final class ConfiguratorBridge: ObservableObject {
                 return ConfiguratorDevice(id: Self.stableID(for: ecid), ecid: ecid, name: name)
             }
         } catch {
-            lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            lastError = permissionAwareMessage(for: error, operation: "lock")
             return []
         }
     }
@@ -69,10 +68,12 @@ final class ConfiguratorBridge: ObservableObject {
             // cfgutil cannot install an autonomous App Lock profile on recent
             // tvOS releases (DMCInstallationErrorDomain 4020). Configurator's
             // own Start Single App Mode action is the supported local workflow.
-            _ = try await resolveECID(for: device.name)
-            _ = try await runExecutable(osascriptURL, arguments: [
-                "-e", Self.startSingleAppModeScript,
-                device.name, "Ciani Device Control", "org.ciani01.cdctv"
+            let ecid = try await resolveECID(for: device.name)
+            try await runAppleScript(Self.startSingleAppModeScript, replacements: [
+                "__DEVICE_NAME__": device.name,
+                "__DEVICE_ECID__": ecid,
+                "__APP_NAME__": "Ciani Device Control",
+                "__BUNDLE_ID__": "org.ciani01.cdctv"
             ])
             systemLockedDeviceIDs.insert(device.id)
             scheduleUnlock(for: device, at: unlockAt)
@@ -95,21 +96,29 @@ final class ConfiguratorBridge: ObservableObject {
         do {
             // Resolve first so UI automation is never allowed to operate on an
             // absent or ambiguously named device.
-            _ = try await resolveECID(for: deviceName)
-            _ = try await runExecutable(osascriptURL, arguments: ["-e", Self.stopSingleAppModeScript, deviceName])
+            let ecid = try await resolveECID(for: deviceName)
+            try await runAppleScript(Self.stopSingleAppModeScript, replacements: [
+                "__DEVICE_NAME__": deviceName,
+                "__DEVICE_ECID__": ecid
+            ])
             return true
         } catch {
-            let detail = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            if detail.localizedCaseInsensitiveContains("not authorized") ||
-                detail.localizedCaseInsensitiveContains("accessibility") ||
-                detail.localizedCaseInsensitiveContains("-1743") ||
-                detail.localizedCaseInsensitiveContains("-25211") {
-                lastError = "Automatic unlock needs permission on this Mac. In System Settings > Privacy & Security, allow Ciani Device Control under Accessibility and Automation, then try again."
-            } else {
-                lastError = detail
-            }
+            lastError = permissionAwareMessage(for: error, operation: "unlock")
             return false
         }
+    }
+
+    private func permissionAwareMessage(for error: Error, operation: String) -> String {
+        let detail = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        if detail.localizedCaseInsensitiveContains("not authorized") ||
+            detail.localizedCaseInsensitiveContains("not allowed assistive access") ||
+            detail.localizedCaseInsensitiveContains("accessibility") ||
+            detail.localizedCaseInsensitiveContains("-1719") ||
+            detail.localizedCaseInsensitiveContains("-1743") ||
+            detail.localizedCaseInsensitiveContains("-25211") {
+            return "Automatic \(operation) needs permission on this Mac. In System Settings > Privacy & Security, enable Ciani Device Control under Accessibility and Automation, then quit and reopen Ciani Device Control."
+        }
+        return detail
     }
 
     private func scheduleUnlock(for device: ManagedDevice, at date: Date?) {
@@ -203,24 +212,60 @@ final class ConfiguratorBridge: ObservableObject {
         }.value
     }
 
+    private func runAppleScript(_ source: String, replacements: [String: String]) async throws {
+        let rendered = replacements.reduce(source) { result, pair in
+            result.replacingOccurrences(of: pair.key, with: Self.appleScriptLiteral(pair.value))
+        }
+        try await Task.detached {
+            var errorInfo: NSDictionary?
+            guard let script = NSAppleScript(source: rendered) else {
+                throw BridgeError.commandFailed("The Configurator automation could not be prepared.")
+            }
+            script.executeAndReturnError(&errorInfo)
+            if let errorInfo {
+                let message = (errorInfo["NSAppleScriptErrorMessage"] as? String)
+                    ?? (errorInfo["NSAppleScriptErrorBriefMessage"] as? String)
+                    ?? "Apple Configurator automation failed."
+                throw BridgeError.commandFailed(message)
+            }
+        }.value
+    }
+
+    private static func appleScriptLiteral(_ value: String) -> String {
+        "\"" + value.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    }
+
     private static let startSingleAppModeScript = #"""
-    on run argv
-        set targetName to item 1 of argv
-        set targetAppName to item 2 of argv
-        set targetBundleID to item 3 of argv
+        set targetName to __DEVICE_NAME__
+        set targetECID to __DEVICE_ECID__
+        set targetAppName to __APP_NAME__
+        set targetBundleID to __BUNDLE_ID__
         tell application "Apple Configurator" to activate
         delay 1
 
         tell application "System Events"
             tell process "Apple Configurator"
                 set frontmost to true
+                set deviceSearch to missing value
+                repeat with candidate in text fields of front window
+                    try
+                        set candidateDescription to description of candidate as text
+                        if candidateDescription contains "earch" then set deviceSearch to candidate
+                    end try
+                end repeat
+                if deviceSearch is missing value then error "Configurator's device search field could not be found."
+                set value of deviceSearch to targetECID
+                delay 0.7
+
                 set matchingItems to {}
                 repeat with candidate in entire contents of front window
                     try
-                        if (value of candidate as text) is targetName then set end of matchingItems to candidate
+                        set candidateValue to value of candidate as text
+                        if candidateValue contains targetName or candidateValue contains targetECID then set end of matchingItems to candidate
                     end try
                 end repeat
-                if (count of matchingItems) is not 1 then error "Apple Configurator could not identify exactly one visible device named " & targetName
+                if (count of matchingItems) is 0 then error "Apple Configurator could not find the connected device after filtering by its ECID. Clear Configurator's search, confirm the TV is visible, and try again."
 
                 set targetItem to item 1 of matchingItems
                 try
@@ -278,25 +323,36 @@ final class ConfiguratorBridge: ObservableObject {
                 click item 1 of selectButtons
             end tell
         end tell
-    end run
     """#
 
     private static let stopSingleAppModeScript = #"""
-    on run argv
-        set targetName to item 1 of argv
+        set targetName to __DEVICE_NAME__
+        set targetECID to __DEVICE_ECID__
         tell application "Apple Configurator" to activate
         delay 1
 
         tell application "System Events"
             tell process "Apple Configurator"
                 set frontmost to true
+                set deviceSearch to missing value
+                repeat with candidate in text fields of front window
+                    try
+                        set candidateDescription to description of candidate as text
+                        if candidateDescription contains "earch" then set deviceSearch to candidate
+                    end try
+                end repeat
+                if deviceSearch is missing value then error "Configurator's device search field could not be found."
+                set value of deviceSearch to targetECID
+                delay 0.7
+
                 set matchingItems to {}
                 repeat with candidate in entire contents of front window
                     try
-                        if (value of candidate as text) is targetName then set end of matchingItems to candidate
+                        set candidateValue to value of candidate as text
+                        if candidateValue contains targetName or candidateValue contains targetECID then set end of matchingItems to candidate
                     end try
                 end repeat
-                if (count of matchingItems) is not 1 then error "Apple Configurator could not identify exactly one visible device named " & targetName
+                if (count of matchingItems) is 0 then error "Apple Configurator could not find the connected device after filtering by its ECID. Clear Configurator's search, confirm the TV is visible, and try again."
 
                 set targetItem to item 1 of matchingItems
                 try
@@ -316,7 +372,6 @@ final class ConfiguratorBridge: ObservableObject {
                 click item 1 of stopItems
             end tell
         end tell
-    end run
     """#
 }
 #endif

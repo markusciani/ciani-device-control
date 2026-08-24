@@ -10,19 +10,19 @@ struct TVLockedView: View {
     var body: some View {
         ZStack {
             AnimatedGradientBackground(preset: store.gradientPreset, vibrantOnBlack: true)
-            VStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 18) {
                 Image(systemName: "lock.fill").font(.system(size: 62, weight: .semibold))
                     .contentTransition(.symbolEffect(.replace)).frame(width: 132, height: 132)
                     .background(.ultraThinMaterial, in: Circle())
                 Text("DEVICE LOCKED").font(.system(size: 56, weight: .bold)).expandedFont().tracking(1)
                 if let message = store.device.customMessage {
-                    Text(message).font(.system(size: 30, weight: .medium)).multilineTextAlignment(.center)
+                    Text(message).font(.system(size: 30, weight: .medium)).multilineTextAlignment(.leading)
                         .foregroundStyle(.white.opacity(0.82)).lineLimit(3).minimumScaleFactor(0.75).padding(.top, 4)
                 }
                 if let unlockAt = store.device.lockState.unlockAt {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         let remaining = CountdownLogic.remaining(until: unlockAt, now: context.date)
-                        VStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 0) {
                             Text(remaining.formatted).font(.system(size: 104, weight: .bold, design: .rounded))
                                 .expandedFont().monospacedDigit().contentTransition(.numericText())
                             Text("REMAINING").font(.headline.bold()).compressedFont().tracking(4).foregroundStyle(.white.opacity(0.72))
@@ -31,15 +31,14 @@ struct TVLockedView: View {
                 } else {
                     Text("Waiting for administrator approval.").font(.title2).padding(.top, 18)
                 }
-            }.padding(.horizontal, 68).padding(.vertical, 42).foregroundStyle(.white)
-                .background {
-                    RoundedRectangle(cornerRadius: 44, style: .continuous)
-                        .fill(.black.opacity(0.38))
-                }
+            }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .padding(.leading, 96).padding(.top, 124).padding(.trailing, 520)
+                .foregroundStyle(.white)
                 .opacity(appeared ? 1 : 0)
-                .scaleEffect(appeared || reduceMotion ? 1 : 0.94)
+                .offset(x: appeared || reduceMotion ? 0 : -36)
         }
-        .overlay(alignment: .top) { TVBrandHeader() }
+        .overlay(alignment: .topLeading) { TVBrandHeader() }
         .onExitCommand { }
         .onAppear {
             withAnimation(.easeOut(duration: 0.8)) { appeared = true }
