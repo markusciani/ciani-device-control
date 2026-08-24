@@ -9,8 +9,10 @@ level.
 
 1. Supervise the Apple TV with Apple Configurator or enroll it in MDM.
 2. Install Ciani Device Control on the Apple TV.
-3. Install `Ciani Device Control App Lock.mobileconfig` using Apple
-   Configurator or assign it to the Apple TV from MDM.
+3. On the Mac controller, press **Lock Now**. The Mac app uses Apple
+   Configurator's **Actions > Advanced > Start Single App Mode** workflow and
+   selects Ciani Device Control. Grant Accessibility and Automation permission
+   to the Mac app when macOS asks.
 4. Restart the Apple TV and verify that Ciani Device Control opens again and
    that the Home button cannot leave the app.
 
@@ -19,11 +21,9 @@ this deployment profile.
 
 ## Unlocking the Apple TV
 
-Remove or unassign the App Lock profile to release the Apple TV from
-system-level Single App Mode. The profile deliberately permits removal so an
-administrator cannot permanently strand the device.
+Press **Unlock Now** on the Mac controller to run Apple Configurator's
+**Stop Single App Mode** action. A timed lock runs the same action when its
+countdown ends, provided the Mac is awake and Configurator can reach the TV.
 
-The app countdown controls the app's locked interface. tvOS does not let the
-app remove its own configuration profile, so automatically leaving system-level
-Single App Mode at the end of the countdown requires the MDM server to remove
-or unassign this profile.
+The app countdown controls the app's locked interface. tvOS cannot remove
+Single App Mode itself, so the Mac must remain available for automatic unlock.

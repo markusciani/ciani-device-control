@@ -132,8 +132,9 @@ final class ConnectionManager: NSObject, ObservableObject {
     func lockManagedDevice(_ device: ManagedDevice, until date: Date?, message: String?) async {
         #if targetEnvironment(macCatalyst)
         guard await configuratorBridge.lock(device, until: date) else { return }
-        let connected = await waitForConnection(to: device.id, timeout: 15)
-        guard connected, send(.lock(unlockAt: date, message: message), toDeviceID: device.id) else {
+        let connectedDeviceID = await waitForConnection(named: device.name, preferredID: device.id, timeout: 20)
+        guard let connectedDeviceID,
+              send(.lock(unlockAt: date, message: message), toDeviceID: connectedDeviceID) else {
             _ = await configuratorBridge.unlock(device)
             configuratorBridge.reportError("Single App Mode opened the TV app, but the Mac could not authenticate with it. The profile was removed for safety. Open the updated TV app once and confirm iCloud Keychain is enabled on the controllers.")
             return
@@ -206,6 +207,18 @@ final class ConnectionManager: NSObject, ObservableObject {
             try? await Task.sleep(for: .milliseconds(300))
         }
         return false
+    }
+
+    private func waitForConnection(named deviceName: String, preferredID: UUID, timeout: TimeInterval) async -> UUID? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if isConnected(to: preferredID) { return preferredID }
+            if let match = remoteDevices.first(where: {
+                $0.name.localizedCaseInsensitiveCompare(deviceName) == .orderedSame && isConnected(to: $0.id)
+            }) { return match.id }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        return nil
     }
 
     private func refreshSyncedPairings() {

@@ -12,7 +12,6 @@ final class ConfiguratorBridge: ObservableObject {
     }
     enum BridgeError: LocalizedError {
         case cfgutilMissing
-        case profileMissing
         case deviceNotFound(String)
         case ambiguousDevice(String)
         case invalidResponse
@@ -22,8 +21,6 @@ final class ConfiguratorBridge: ObservableObject {
             switch self {
             case .cfgutilMissing:
                 "Apple Configurator's cfgutil tool is not installed on this Mac."
-            case .profileMissing:
-                "The bundled Apple TV App Lock profile could not be found."
             case .deviceNotFound(let name):
                 "Apple Configurator cannot currently reach \(name). Keep the Mac and Apple TV on the same network and confirm that they are paired."
             case .ambiguousDevice(let name):
@@ -42,7 +39,6 @@ final class ConfiguratorBridge: ObservableObject {
 
     private let cfgutilURL = URL(fileURLWithPath: "/usr/local/bin/cfgutil")
     private let osascriptURL = URL(fileURLWithPath: "/usr/bin/osascript")
-    private let profileIdentifier = "org.ciani01.cdc.profile.applock"
     private var scheduledUnlocks: [UUID: Task<Void, Never>] = [:]
 
     func reportError(_ message: String) {
@@ -70,15 +66,16 @@ final class ConfiguratorBridge: ObservableObject {
         defer { isWorking = false }
 
         do {
-            let ecid = try await resolveECID(for: device.name)
-            guard let profileURL = Bundle.main.url(
-                forResource: "Ciani Device Control App Lock",
-                withExtension: "mobileconfig"
-            ) else { throw BridgeError.profileMissing }
-
-            _ = try await run(["--ecid", ecid, "--format", "JSON", "install-profile", profileURL.path])
+            // cfgutil cannot install an autonomous App Lock profile on recent
+            // tvOS releases (DMCInstallationErrorDomain 4020). Configurator's
+            // own Start Single App Mode action is the supported local workflow.
+            _ = try await resolveECID(for: device.name)
+            _ = try await runExecutable(osascriptURL, arguments: [
+                "-e", Self.startSingleAppModeScript,
+                device.name, "Ciani Device Control", "org.ciani01.cdctv"
+            ])
             systemLockedDeviceIDs.insert(device.id)
-            scheduleUnlock(for: device, ecid: ecid, at: unlockAt)
+            scheduleUnlock(for: device, at: unlockAt)
             return true
         } catch {
             lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -115,25 +112,22 @@ final class ConfiguratorBridge: ObservableObject {
         }
     }
 
-    private func scheduleUnlock(for device: ManagedDevice, ecid: String, at date: Date?) {
+    private func scheduleUnlock(for device: ManagedDevice, at date: Date?) {
         scheduledUnlocks[device.id]?.cancel()
         guard let date else { return }
         scheduledUnlocks[device.id] = Task { [weak self] in
             let delay = max(0, date.timeIntervalSinceNow)
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, let self else { return }
-            do {
-                try await self.removeProfile(ecid: ecid)
+            let unlocked = await self.stopSingleAppMode(deviceNamed: device.name)
+            if unlocked {
                 self.systemLockedDeviceIDs.remove(device.id)
                 self.scheduledUnlocks[device.id] = nil
-            } catch {
-                self.lastError = "The countdown ended, but Single App Mode could not be removed: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            } else {
+                let detail = self.lastError ?? "Apple Configurator did not complete the request."
+                self.lastError = "The countdown ended, but Single App Mode could not be removed: \(detail)"
             }
         }
-    }
-
-    private func removeProfile(ecid: String) async throws {
-        _ = try await run(["--ecid", ecid, "--format", "JSON", "remove-profile", profileIdentifier])
     }
 
     private func resolveECID(for deviceName: String) async throws -> String {
@@ -208,6 +202,84 @@ final class ConfiguratorBridge: ObservableObject {
             return data
         }.value
     }
+
+    private static let startSingleAppModeScript = #"""
+    on run argv
+        set targetName to item 1 of argv
+        set targetAppName to item 2 of argv
+        set targetBundleID to item 3 of argv
+        tell application "Apple Configurator" to activate
+        delay 1
+
+        tell application "System Events"
+            tell process "Apple Configurator"
+                set frontmost to true
+                set matchingItems to {}
+                repeat with candidate in entire contents of front window
+                    try
+                        if (value of candidate as text) is targetName then set end of matchingItems to candidate
+                    end try
+                end repeat
+                if (count of matchingItems) is not 1 then error "Apple Configurator could not identify exactly one visible device named " & targetName
+
+                set targetItem to item 1 of matchingItems
+                try
+                    perform action "AXPress" of targetItem
+                on error
+                    click targetItem
+                end try
+                delay 0.5
+
+                click menu bar item "Actions" of menu bar 1
+                delay 0.2
+                click menu item "Advanced" of menu 1 of menu bar item "Actions" of menu bar 1
+                delay 0.2
+                set advancedMenu to menu 1 of menu item "Advanced" of menu 1 of menu bar item "Actions" of menu bar 1
+                set startItems to menu items of advancedMenu whose name starts with "Start Single App Mode"
+                if (count of startItems) is not 1 then error "Start Single App Mode is unavailable. Confirm this Apple TV is supervised and connected to Apple Configurator."
+                click item 1 of startItems
+                delay 1
+
+                set chooser to front window
+                try
+                    if (count of sheets of front window) > 0 then set chooser to sheet 1 of front window
+                end try
+
+                -- Filter the installed-app list when Configurator exposes a search field.
+                try
+                    set value of text field 1 of chooser to targetAppName
+                    delay 0.5
+                end try
+
+                set appItems to {}
+                repeat with candidate in entire contents of chooser
+                    try
+                        set candidateValue to value of candidate as text
+                        if candidateValue is targetAppName or candidateValue is targetBundleID then set end of appItems to candidate
+                    end try
+                    try
+                        set candidateTitle to title of candidate as text
+                        if candidateTitle is targetAppName or candidateTitle is targetBundleID then set end of appItems to candidate
+                    end try
+                end repeat
+                if (count of appItems) is 0 then error "Ciani Device Control is not installed on this Apple TV. Install it, reopen Configurator, and try again."
+
+                set appItem to item 1 of appItems
+                try
+                    perform action "AXPress" of appItem
+                on error
+                    click appItem
+                end try
+                delay 0.3
+
+                set selectButtons to buttons of chooser whose name is "Select App"
+                if (count of selectButtons) is 0 then set selectButtons to buttons of chooser whose name is "Select"
+                if (count of selectButtons) is 0 then error "Configurator opened the app chooser, but the Select App button could not be found."
+                click item 1 of selectButtons
+            end tell
+        end tell
+    end run
+    """#
 
     private static let stopSingleAppModeScript = #"""
     on run argv
