@@ -8,7 +8,7 @@ struct DeviceDetailView: View {
     @State private var renamedDevice = ""
     @State private var message = ""
     @State private var operationError: String?
-    @State private var selectedPreset = GradientPreset.aurora
+    @State private var commandNotice: String?
 
     private var current: ManagedDevice { connection.remoteDevices.first(where: { $0.id == device.id }) ?? device }
 
@@ -19,6 +19,13 @@ struct DeviceDetailView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30))
                 Text(current.name).font(.title.bold()).multilineTextAlignment(.center)
                 StatusBadge(status: current.connectionStatus)
+                if let pending = connection.pendingCommandCountByDevice[current.id], pending > 0 {
+                    Label("\(pending) command\(pending == 1 ? "" : "s") waiting for this TV to reconnect",
+                          systemImage: "clock.arrow.circlepath")
+                        .font(.subheadline.weight(.medium)).foregroundStyle(.orange)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(.orange.opacity(0.12), in: Capsule())
+                }
                 VStack(spacing: 10) {
                     Text(current.lockState.isLocked ? "DEVICE LOCKED" : "DEVICE UNLOCKED")
                         .font(.title2.bold()).expandedFont()
@@ -38,35 +45,15 @@ struct DeviceDetailView: View {
                         action("Lock Now", "lock.fill", .red) { lock(until: nil) }
                         action("Unlock Now", "lock.open.fill", .green) { unlock() }
                     }
-                    .disabled(current.connectionStatus != .connected)
                     Button { showTimer = true } label: {
                         Label(current.lockState.unlockAt == nil ? "Lock for a Duration" : "Change Timer", systemImage: "timer")
                             .frame(maxWidth: .infinity).padding().background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16)).foregroundStyle(.white)
                     }
-                    .disabled(current.connectionStatus != .connected)
                     if current.connectionStatus != .connected {
-                        Label("Open Ciani Device Control on this Apple TV to use live controls.", systemImage: "wifi.slash")
+                        Label("Offline commands will run automatically when this TV app reconnects.", systemImage: "tray.and.arrow.down.fill")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("TV Appearance").font(.headline)
-                    Picker("Color Theme", selection: $selectedPreset) {
-                        ForEach(GradientPreset.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                    Button {
-                        guard connection.send(.setGradient(selectedPreset), toDeviceID: current.id) else {
-                            operationError = "The Apple TV is offline. Open the TV app and try again."
-                            return
-                        }
-                    } label: {
-                        Label("Apply Theme to This TV", systemImage: "paintpalette.fill").frame(maxWidth: .infinity)
-                    }.buttonStyle(.borderedProminent).disabled(current.connectionStatus != .connected)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading).padding(20)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Device Information").font(.headline)
@@ -98,12 +85,16 @@ struct DeviceDetailView: View {
             get: { operationError != nil },
             set: { if !$0 { operationError = nil } }
         )) { Button("OK") { operationError = nil } } message: { Text(operationError ?? "Unknown error") }
+        .alert("Command Queued", isPresented: Binding(
+            get: { commandNotice != nil }, set: { if !$0 { commandNotice = nil } }
+        )) { Button("OK") { commandNotice = nil } } message: { Text(commandNotice ?? "") }
         .alert("Rename Device", isPresented: $showRename) {
             TextField("Device name", text: $renamedDevice)
             Button("Save") {
                 let cleanName = renamedDevice.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !cleanName.isEmpty, connection.send(.renameDevice(cleanName), toDeviceID: current.id) else {
-                    operationError = "The name could not be changed because the Apple TV is offline."
+                guard !cleanName.isEmpty else { return }
+                if !connection.sendOrQueue(.renameDevice(cleanName), toDeviceID: current.id) {
+                    commandNotice = "The new name is saved and will be applied when the Apple TV reconnects."
                     return
                 }
             }
@@ -116,27 +107,25 @@ struct DeviceDetailView: View {
     }
 
     private func lock(until date: Date?) {
-        guard current.connectionStatus == .connected else {
-            operationError = "The Apple TV is offline. Open Ciani Device Control on the TV and try again."
-            return
-        }
+        let isOnline = connection.isConnected(to: current.id)
         Task {
             await connection.lockManagedDevice(current, until: date, message: message)
             #if targetEnvironment(macCatalyst)
             operationError = connection.configuratorBridge.lastError
+            #else
+            if !isOnline { commandNotice = "The lock command is saved and will run automatically when the Apple TV reconnects." }
             #endif
         }
     }
 
     private func unlock() {
-        guard current.connectionStatus == .connected else {
-            operationError = "The Apple TV is offline. Open Ciani Device Control on the TV and try again."
-            return
-        }
+        let isOnline = connection.isConnected(to: current.id)
         Task {
             await connection.unlockManagedDevice(current)
             #if targetEnvironment(macCatalyst)
             operationError = connection.configuratorBridge.lastError
+            #else
+            if !isOnline { commandNotice = "The unlock command is saved and will run automatically when the Apple TV reconnects." }
             #endif
         }
     }

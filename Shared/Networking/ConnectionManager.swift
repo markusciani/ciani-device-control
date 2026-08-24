@@ -14,6 +14,7 @@ final class ConnectionManager: NSObject, ObservableObject {
     @Published private(set) var discoveredDevices: [MCPeerID] = []
     @Published private(set) var connectedPeers: [MCPeerID] = []
     @Published private(set) var remoteDevices: [ManagedDevice]
+    @Published private(set) var pendingCommandCountByDevice: [UUID: Int] = [:]
     @Published var lastPairingError: String?
     #if targetEnvironment(macCatalyst)
     let configuratorBridge = ConfiguratorBridge()
@@ -31,7 +32,23 @@ final class ConnectionManager: NSObject, ObservableObject {
     private let pairedDevicesKey = "paired-device-metadata"
     private let pendingRemovalKey = "pending-device-removals"
     private let revokedDevicesKey = "revoked-device-ids"
+    private let queuedCommandsKey = "queued-device-commands"
     private var syncedPairingRefreshTask: Task<Void, Never>?
+
+    private struct QueuedDeviceCommand: Codable {
+        let deviceID: UUID
+        let command: DeviceCommand
+        let queuedAt: Date
+    }
+
+    private var queuedCommands: [QueuedDeviceCommand] = [] {
+        didSet {
+            pendingCommandCountByDevice = Dictionary(grouping: queuedCommands, by: \.deviceID).mapValues(\.count)
+            if let data = try? JSONEncoder().encode(queuedCommands) {
+                UserDefaults.standard.set(data, forKey: queuedCommandsKey)
+            }
+        }
+    }
 
     init(stateStore: DeviceStateStore? = nil) {
         let name = UIDevice.current.name
@@ -64,6 +81,11 @@ final class ConnectionManager: NSObject, ObservableObject {
             UserDefaults.standard.set(id.uuidString, forKey: "controller-id")
         }
         super.init()
+        #if os(iOS)
+        queuedCommands = UserDefaults.standard.data(forKey: queuedCommandsKey)
+            .flatMap { try? JSONDecoder().decode([QueuedDeviceCommand].self, from: $0) } ?? []
+        pendingCommandCountByDevice = Dictionary(grouping: queuedCommands, by: \.deviceID).mapValues(\.count)
+        #endif
         session.delegate = self
         #if os(iOS)
         if !remoteDevices.isEmpty { persistPairedDevices() }
@@ -117,7 +139,7 @@ final class ConnectionManager: NSObject, ObservableObject {
             return
         }
         #else
-        send(.lock(unlockAt: date, message: message), toDeviceID: device.id)
+        sendOrQueue(.lock(unlockAt: date, message: message), toDeviceID: device.id)
         #endif
     }
 
@@ -126,7 +148,7 @@ final class ConnectionManager: NSObject, ObservableObject {
         send(.unlock, toDeviceID: device.id)
         guard await configuratorBridge.stopSingleAppMode(deviceNamed: device.name) else { return }
         #else
-        send(.unlock, toDeviceID: device.id)
+        sendOrQueue(.unlock, toDeviceID: device.id)
         #endif
     }
 
@@ -137,6 +159,39 @@ final class ConnectionManager: NSObject, ObservableObject {
     func refreshStatus(for deviceID: UUID? = nil) {
         if let deviceID { send(.requestStatus, toDeviceID: deviceID) }
         else { send(.requestStatus) }
+    }
+
+    func applyThemeToAllDevices(_ preset: GradientPreset) {
+        for device in remoteDevices {
+            sendOrQueue(.setGradient(preset), toDeviceID: device.id)
+        }
+    }
+
+    @discardableResult
+    func sendOrQueue(_ command: DeviceCommand, toDeviceID deviceID: UUID) -> Bool {
+        if send(command, toDeviceID: deviceID) { return true }
+        queuedCommands.removeAll { $0.deviceID == deviceID && Self.commandsConflict($0.command, command) }
+        queuedCommands.append(QueuedDeviceCommand(deviceID: deviceID, command: command, queuedAt: .now))
+        return false
+    }
+
+    private static func commandsConflict(_ existing: DeviceCommand, _ replacement: DeviceCommand) -> Bool {
+        switch (existing, replacement) {
+        case (.lock, .lock), (.lock, .unlock), (.unlock, .lock), (.unlock, .unlock): true
+        case (.renameDevice, .renameDevice): true
+        case (.setGradient, .setGradient): true
+        default: false
+        }
+    }
+
+    private func deliverQueuedCommands(to deviceID: UUID) {
+        let commands = queuedCommands.filter { $0.deviceID == deviceID }
+        guard !commands.isEmpty else { return }
+        for item in commands {
+            if case .lock(let unlockAt, _) = item.command, let unlockAt, unlockAt <= .now { continue }
+            guard send(item.command, toDeviceID: deviceID) else { return }
+        }
+        queuedCommands.removeAll { $0.deviceID == deviceID }
     }
 
     func isConnected(to deviceID: UUID) -> Bool {
@@ -311,6 +366,7 @@ final class ConnectionManager: NSObject, ObservableObject {
             savePendingRemovalIDs(pending)
             peerByDeviceID[payload.device.id] = peer
             upsert(payload.device)
+            applyReportedTheme(payload.gradientPreset)
             if let secret = secretsByPeer[peer] {
                 SecureStore.set(secret, for: "peer-\(payload.device.id.uuidString)")
             }
@@ -322,6 +378,7 @@ final class ConnectionManager: NSObject, ObservableObject {
             }
             peerByDeviceID[payload.device.id] = peer
             upsert(payload.device)
+            applyReportedTheme(payload.gradientPreset)
         case .pairRejected: lastPairingError = "The pairing code was not accepted."
         case .unpairConfirmed(let deviceID): forgetRemoteDevice(id: deviceID)
         case .systemUnlockRequested(_, let deviceName):
@@ -337,6 +394,11 @@ final class ConnectionManager: NSObject, ObservableObject {
         if let index = remoteDevices.firstIndex(where: { $0.id == device.id }) { remoteDevices[index] = device }
         else { remoteDevices.append(device) }
         persistPairedDevices()
+    }
+
+    private func applyReportedTheme(_ preset: GradientPreset) {
+        guard UserDefaults.standard.bool(forKey: "match-controller-theme") else { return }
+        UserDefaults.standard.set(preset.rawValue, forKey: "gradient-preset")
     }
 
     private func persistPairedDevices() {
@@ -389,7 +451,10 @@ extension ConnectionManager: MCSessionDelegate {
                 send(.setRemovalPINHash(PINVerifier.hash(pin)), to: [peerID])
                 if let id = discoveredDeviceIDs[peerID], pendingRemovalIDs.contains(id) {
                     send(.unpair, to: [peerID]); finalizeRemoval(id: id)
-                } else { send(.requestStatus, to: [peerID]) }
+                } else {
+                    if let id = discoveredDeviceIDs[peerID] { deliverQueuedCommands(to: id) }
+                    send(.requestStatus, to: [peerID])
+                }
             }
             #endif
         }

@@ -28,7 +28,9 @@ struct SettingsView: View {
             Section("Appearance") {
                 Picker("Gradient Style", selection: $presetRaw) {
                     ForEach(GradientPreset.allCases) { Text($0.rawValue).tag($0.rawValue) }
-                }.onChange(of: presetRaw) { _, value in if let preset = GradientPreset(rawValue: value) { connection.send(.setGradient(preset)) } }
+                }.onChange(of: presetRaw) { _, value in
+                    if let preset = GradientPreset(rawValue: value) { connection.applyThemeToAllDevices(preset) }
+                }
                 Toggle("Animated Background", isOn: $animatedBackground)
                 Toggle("Match Controller to TV Colors", isOn: $matchControllerTheme)
                 NavigationLink("Lock Screen Preview") { LockScreenPreview(preset: GradientPreset(rawValue: presetRaw) ?? .aurora) }
